@@ -1,0 +1,149 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Client {
+  id        String    @id @default(uuid())
+  name      String
+  token     String    @unique
+  isActive  Boolean   @default(true)
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  // Notifiche email
+  emailActive Boolean @default(false) // true: gestisce autonomamente le mail, false: usa notifiche app
+
+  // Webhook per integrazioni (Discord, Slack, etc)
+  webhookUrl String?
+
+  events          Event[]
+  eventCategories EventCategory[]
+
+  @@map("clients")
+}
+
+model EventCategory {
+  id       String  @id @default(uuid())
+  clientId String
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name     String
+  color    String? // per UI/calendario
+  icon     String?
+
+  events Event[]
+
+  @@unique([clientId, name])
+  @@index([clientId])
+  @@map("event_categories")
+}
+
+model Event {
+  id            String      @id @default(uuid())
+  title         String
+  description   String?
+  clientId      String
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  authorId      String
+  authorName    String
+  authorEmail   String?
+  startTime     DateTime
+  endTime       DateTime?
+  timezone      String      @default("Europe/Rome")
+  status        EventStatus @default(DRAFT)
+  type          String? // "lesson", "live", "gaming", "seminar", ecc.
+  coverImageUrl String?
+  tags          String[] // array nativo PostgreSQL
+
+  // Categoria opzionale
+  categoryId String?
+  category   EventCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // Location (fisica o virtuale)
+  locationName    String?
+  locationAddress String?
+  locationUrl     String? // per eventi online/stream
+  isOnline        Boolean @default(false)
+
+  // Capacità
+  maxParticipants Int?
+  isPublic        Boolean @default(true)
+
+  // Pricing opzionale
+  price    Decimal? @db.Decimal(10, 2)
+  currency String?  @default("EUR")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Ricorrenza
+  recurrenceId      String?
+  recurrenceRule    String? // formato iCal RRULE: FREQ=WEEKLY;BYDAY=MO,WE
+  recurrenceEndDate DateTime?
+  recurrenceCount   Int?
+  isRecurring       Boolean   @default(false)
+  parentEventId     String?
+  parentEvent       Event?    @relation("EventRecurrence", fields: [parentEventId], references: [id], onDelete: Cascade)
+  childEvents       Event[]   @relation("EventRecurrence")
+
+  participants Participant[]
+
+  @@index([clientId])
+  @@index([categoryId])
+  @@index([parentEventId])
+  @@index([status])
+  @@index([startTime])
+  @@map("events")
+}
+
+model Participant {
+  id          String            @id @default(uuid())
+  eventId     String
+  event       Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId      String
+  userName    String
+  email       String? // email del partecipante per contatti
+  status      ParticipantStatus @default(REGISTERED)
+  role        ParticipantRole   @default(ATTENDEE)
+  notes       String? // note dell'organizzatore sul partecipante
+  checkedIn   Boolean           @default(false)
+  checkedInAt DateTime?
+  createdAt   DateTime          @default(now())
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+  @@index([status])
+  @@map("participants")
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum ParticipantStatus {
+  REGISTERED
+  WAITLIST
+  CONFIRMED
+  CANCELLED
+  ATTENDED
+}
+
+enum ParticipantRole {
+  ATTENDEE
+  SPEAKER
+  ORGANIZER
+  HOST
+}
