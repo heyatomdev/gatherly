@@ -1,6 +1,16 @@
-# EventPlan - Multi-tenant Event Management System
 
-Sistema di gestione eventi multi-tenant con NestJS e Prisma che consente a diversi client di creare e gestire eventi in modo isolato.
+<p align="center">
+  <a href="https://github.com/heyatomdev/gatherly" target="blank"><img src="app_logo.png" width="700" alt="Gatherly App Logo" /></a>
+</p>
+
+<p align="center">
+Multi-tenant event manager built with NestJS 10, Prisma ORM, and PostgreSQL.
+</p>
+<p align="center">
+    <a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@heyatomdev/gatherly" alt="NPM Version" /></a>
+    <a href="https://github.com/heyatomdev/gatherly/blob/main/LICENSE.md" target="_blank"><img alt="GitHub License" src="https://img.shields.io/github/license/heyatomdev/gatherly"></a>
+</p>
+
 
 ## Caratteristiche
 
