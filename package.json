@@ -1,5 +1,5 @@
 {
-  "name": "eventplan",
+  "name": "gatherly",
   "version": "1.0.0",
   "description": "Multi-tenant event management system with NestJS and Prisma",
   "main": "dist/main.js",
