@@ -1,34 +1,28 @@
-FROM node:24.13.0-slim AS builder
+FROM node:24.15.0-alpine3.23 AS base
 
 ENV NODE_ENV=build
 
 # Create app directory
 WORKDIR /usr/src/app
 
-# Install pnpm and build dependencies
+# Install pnpm
 RUN npm install -g pnpm
 
-# Install build deps needed for native modules and prisma generation
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential python3 curl ca-certificates gcc g++ make && \
-    rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache openssl curl
 
-# Install app dependencies (including dev dependencies) for the build
+# Install app dependencies
 COPY package.json pnpm-lock.yaml ./
+
 RUN pnpm install --frozen-lockfile
 
 # Bundle app source
 COPY . .
 
-# Generate Prisma client and build
 RUN pnpm run prisma:generate
+
 RUN pnpm build
 
-# Remove devDependencies to keep only production deps (pruned node_modules)
-RUN pnpm prune --prod
-
-# Start a fresh runtime image
-FROM node:24.13.0-slim AS prod
+FROM base AS prod-build
 
 # Set the NODE_ENV to production
 ENV NODE_ENV=production
@@ -36,17 +30,16 @@ ENV NODE_ENV=production
 # Create app directory
 WORKDIR /usr/src/app
 
-# Create a non-root user and group with specific UID/GID to match host user
-RUN groupadd -g 1001 app && useradd -u 1001 -g app -m app
+COPY prisma prisma
 
-# Copy built artifacts and dependencies from builder with ownership set during copy
-COPY --chown=app:app package.json pnpm-lock.yaml ./
-COPY --from=builder --chown=app:app /usr/src/app/prisma ./prisma
-COPY --from=builder --chown=app:app /usr/src/app/dist ./dist
-COPY --from=builder --chown=app:app /usr/src/app/node_modules ./node_modules
+RUN pnpm run prisma:generate
 
-# Switch to non-root user
-USER app
+# Install app dependencies
+COPY package.json pnpm-lock.yaml ./
+
+RUN pnpm install --prod --frozen-lockfile
+
+COPY --from=base /usr/src/app/dist ./dist
 
 # Start the server using the production build
-CMD [ "node", "dist/main.js" ]
+CMD [ "node", "dist/src/main.js" ]

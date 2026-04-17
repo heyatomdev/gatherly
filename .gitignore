@@ -47,3 +47,5 @@ storage/*
 !/storage/defaults.fileharbor/**
 
 /generated/prisma
+
+tsconfig.build.tsbuildinfo
