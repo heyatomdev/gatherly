@@ -1,55 +1,66 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { rrulestr } from 'rrule';
+import { CreateEventDto, UpdateEventDto, AddParticipantDto } from './dto/event.dto';
+
+const EVENT_INCLUDE = {
+  translations: true,
+  tags: { include: { tag: true } },
+  participants: true,
+  category: { include: { translations: true } },
+  recurrenceRule: true,
+};
 
 @Injectable()
 export class EventService {
   constructor(private prisma: PrismaService) {}
 
-  async createEvent(
-    clientId: string,
-    data: {
-      title: string;
-      description?: string;
-      authorId: string;
-      authorName: string;
-      authorEmail?: string;
-      startTime: Date;
-      endTime?: Date;
-      timezone?: string;
-      status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
-      type?: string;
-      coverImageUrl?: string;
-      tags?: string[];
-      categoryId?: string;
-      locationName?: string;
-      locationAddress?: string;
-      locationUrl?: string;
-      isOnline?: boolean;
-      maxParticipants?: number;
-      isPublic?: boolean;
-      price?: number;
-      currency?: string;
-      recurrenceRule?: string;
-      recurrenceEndDate?: Date;
-      recurrenceCount?: number;
-    },
-  ) {
+  async createEvent(clientId: string, data: CreateEventDto) {
+    let recurrenceRuleId: string | undefined;
+    if (data.recurrenceRule) {
+      const rule = await this.prisma.recurrenceRule.create({
+        data: {
+          rule: data.recurrenceRule,
+          endDate: data.recurrenceEndDate ? new Date(data.recurrenceEndDate) : undefined,
+          count: data.recurrenceCount,
+        },
+      });
+      recurrenceRuleId = rule.id;
+    }
+
+    const tagConnections = await this.resolveTagSlugs(clientId, data.tagSlugs);
+
     const event = await this.prisma.event.create({
       data: {
-        ...data,
         clientId,
-        isRecurring: !!data.recurrenceRule,
+        defaultLocale: data.defaultLocale ?? data.translations[0]?.locale ?? 'it',
+        authorId: data.authorId,
+        authorName: data.authorName,
+        authorEmail: data.authorEmail,
+        startTime: new Date(data.startTime),
+        endTime: data.endTime ? new Date(data.endTime) : undefined,
+        timezone: data.timezone,
+        status: data.status,
+        type: data.type,
+        coverImageUrl: data.coverImageUrl,
+        categoryId: data.categoryId,
+        locationName: data.locationName,
+        locationAddress: data.locationAddress,
+        locationUrl: data.locationUrl,
+        isOnline: data.isOnline,
+        maxParticipants: data.maxParticipants,
+        isPublic: data.isPublic,
+        price: data.price,
+        currency: data.currency,
+        recurrenceRuleId,
+        translations: { create: data.translations },
+        tags: { create: tagConnections.map((tagId) => ({ tagId })) },
       },
-      include: {
-        participants: true,
-        category: true,
-      },
+      include: EVENT_INCLUDE,
     });
 
-    // Se è ricorrente, genera le istanze future
-    if (data.recurrenceRule) {
+    if (recurrenceRuleId) {
       await this.generateRecurringInstances(event);
     }
 
@@ -58,48 +69,35 @@ export class EventService {
 
   private async generateRecurringInstances(parentEvent: any) {
     try {
-      const rrule = rrulestr(parentEvent.recurrenceRule, {
-        dtstart: parentEvent.startTime
-      });
+      const rule = parentEvent.recurrenceRule;
+      if (!rule) return;
 
-      // Determina il limite per le occorrenze
-      const maxOccurrences = parentEvent.recurrenceCount || 52; // Default 1 anno
-      const endDate = parentEvent.recurrenceEndDate;
+      const rrule = rrulestr(rule.rule, { dtstart: parentEvent.startTime });
+      const maxOccurrences = rule.count ?? 52;
+      const endDate = rule.endDate;
 
       let occurrences = rrule.all((_, count) => count < maxOccurrences);
+      if (endDate) occurrences = occurrences.filter((d) => d <= endDate);
 
-      // Filtra per data di fine se specificata
-      if (endDate) {
-        occurrences = occurrences.filter(date => date <= endDate);
-      }
-
-      // Calcola la durata dell'evento se ha endTime
-      let duration: number | null = null;
-      if (parentEvent.endTime) {
-        duration = parentEvent.endTime.getTime() - parentEvent.startTime.getTime();
-      }
+      const duration = parentEvent.endTime
+        ? parentEvent.endTime.getTime() - parentEvent.startTime.getTime()
+        : null;
 
       for (const occurrence of occurrences) {
         if (occurrence > new Date()) {
-          const eventEndTime = duration
-            ? new Date(occurrence.getTime() + duration)
-            : null;
-
           await this.prisma.event.create({
             data: {
-              title: parentEvent.title,
-              description: parentEvent.description,
               clientId: parentEvent.clientId,
+              defaultLocale: parentEvent.defaultLocale,
               authorId: parentEvent.authorId,
               authorName: parentEvent.authorName,
               authorEmail: parentEvent.authorEmail,
               startTime: occurrence,
-              endTime: eventEndTime,
+              endTime: duration ? new Date(occurrence.getTime() + duration) : undefined,
               timezone: parentEvent.timezone,
               status: parentEvent.status,
               type: parentEvent.type,
               coverImageUrl: parentEvent.coverImageUrl,
-              tags: parentEvent.tags,
               categoryId: parentEvent.categoryId,
               locationName: parentEvent.locationName,
               locationAddress: parentEvent.locationAddress,
@@ -110,7 +108,16 @@ export class EventService {
               price: parentEvent.price,
               currency: parentEvent.currency,
               parentEventId: parentEvent.id,
-              isRecurring: false,
+              translations: {
+                create: parentEvent.translations.map((t: any) => ({
+                  locale: t.locale,
+                  title: t.title,
+                  description: t.description,
+                })),
+              },
+              tags: {
+                create: parentEvent.tags.map((et: any) => ({ tagId: et.tagId })),
+              },
             },
           });
         }
@@ -126,10 +133,11 @@ export class EventService {
       status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
       type?: string;
       categoryId?: string;
+      tagId?: string;
       isOnline?: boolean;
       fromDate?: Date;
       toDate?: Date;
-    }
+    },
   ) {
     return this.prisma.event.findMany({
       where: {
@@ -137,160 +145,112 @@ export class EventService {
         ...(filters?.status && { status: filters.status }),
         ...(filters?.type && { type: filters.type }),
         ...(filters?.categoryId && { categoryId: filters.categoryId }),
+        ...(filters?.tagId && { tags: { some: { tagId: filters.tagId } } }),
         ...(filters?.isOnline !== undefined && { isOnline: filters.isOnline }),
-        ...(filters?.fromDate && {
-          startTime: { gte: filters.fromDate }
-        }),
-        ...(filters?.toDate && {
-          startTime: { lte: filters.toDate }
-        }),
+        ...(filters?.fromDate && { startTime: { gte: filters.fromDate } }),
+        ...(filters?.toDate && { startTime: { lte: filters.toDate } }),
       },
-      include: {
-        participants: true,
-        category: true,
-      },
+      include: EVENT_INCLUDE,
       orderBy: { startTime: 'asc' },
     });
   }
 
   async getEventById(eventId: string, clientId: string) {
-    return this.prisma.event.findFirst({
-      where: { id: eventId, clientId },
-      include: {
-        participants: {
-          orderBy: { createdAt: 'asc' }
-        },
-        category: true,
-        childEvents: {
-          include: {
-            participants: true
-          }
-        }
-      },
-    });
-  }
-
-  async addParticipant(
-    eventId: string,
-    clientId: string,
-    participantData: {
-      userId: string;
-      userName: string;
-      role?: 'ATTENDEE' | 'SPEAKER' | 'ORGANIZER' | 'HOST';
-      notes?: string;
-    },
-  ) {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, clientId },
       include: {
-        participants: {
-          where: {
-            status: { in: ['REGISTERED', 'CONFIRMED'] }
-          }
-        }
-      }
+        ...EVENT_INCLUDE,
+        childEvents: {
+          include: { translations: true, participants: true },
+        },
+      },
     });
 
-    if (!event) {
-      throw new Error('Evento non trovato');
+    if (!event) throw new NotFoundException('Event not found');
+    return event;
+  }
+
+  async updateEvent(eventId: string, clientId: string, data: UpdateEventDto) {
+    await this.getEventById(eventId, clientId);
+
+    if (data.translations?.length) {
+      await Promise.all(
+        data.translations.map((t) =>
+          this.prisma.eventTranslation.upsert({
+            where: { eventId_locale: { eventId, locale: t.locale } },
+            create: { eventId, locale: t.locale, title: t.title, description: t.description },
+            update: { title: t.title, description: t.description },
+          }),
+        ),
+      );
     }
 
-    // Verifica capacità massima e gestisci waitlist
-    let participantStatus: 'REGISTERED' | 'WAITLIST' = 'REGISTERED';
-
-    if (event.maxParticipants) {
-      const currentCount = event.participants.length;
-      if (currentCount >= event.maxParticipants) {
-        participantStatus = 'WAITLIST';
+    if (data.tagSlugs !== undefined) {
+      const tagIds = await this.resolveTagSlugs(clientId, data.tagSlugs);
+      await this.prisma.eventTag.deleteMany({ where: { eventId } });
+      if (tagIds.length) {
+        await this.prisma.eventTag.createMany({
+          data: tagIds.map((tagId) => ({ eventId, tagId })),
+        });
       }
+    }
+
+    const { translations, tagSlugs, ...scalarData } = data;
+
+    return this.prisma.event.update({
+      where: { id: eventId },
+      data: {
+        ...scalarData,
+        startTime: scalarData.startTime ? new Date(scalarData.startTime) : undefined,
+        endTime: scalarData.endTime ? new Date(scalarData.endTime) : undefined,
+      },
+      include: EVENT_INCLUDE,
+    });
+  }
+
+  async addParticipant(eventId: string, clientId: string, data: AddParticipantDto) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, clientId },
+      include: {
+        participants: { where: { status: { in: ['REGISTERED', 'CONFIRMED'] } } },
+      },
+    });
+
+    if (!event) throw new NotFoundException('Event not found');
+
+    let participantStatus: 'REGISTERED' | 'WAITLIST' = 'REGISTERED';
+    if (event.maxParticipants && event.participants.length >= event.maxParticipants) {
+      participantStatus = 'WAITLIST';
     }
 
     return this.prisma.participant.create({
       data: {
         eventId,
-        userId: participantData.userId,
-        userName: participantData.userName,
+        type: data.type ?? 'INLINE',
+        userName: data.userName,
+        email: data.email,
+        externalId: data.externalId,
+        externalSource: data.externalSource,
         status: participantStatus,
-        role: participantData.role || 'ATTENDEE',
-        notes: participantData.notes,
+        role: data.role ?? 'ATTENDEE',
+        notes: data.notes,
+        metadata: data.metadata,
       },
     });
   }
 
-  async removeParticipant(eventId: string, clientId: string, userId: string) {
-    const event = await this.prisma.event.findFirst({
-      where: { id: eventId, clientId },
+  async removeParticipant(eventId: string, clientId: string, participantId: string) {
+    const event = await this.prisma.event.findFirst({ where: { id: eventId, clientId } });
+    if (!event) throw new NotFoundException('Event not found');
+
+    await this.prisma.participant.update({
+      where: { id: participantId },
+      data: { status: 'CANCELLED' },
     });
 
-    if (!event) {
-      throw new Error('Evento non trovato');
-    }
-
-    // Segna il partecipante come CANCELLED invece di eliminarlo
-    const result = await this.prisma.participant.updateMany({
-      where: {
-        eventId,
-        userId,
-      },
-      data: {
-        status: 'CANCELLED',
-      },
-    });
-
-    // Gestisci la waitlist: promuovi il primo in attesa
     if (event.maxParticipants) {
       await this.promoteFromWaitlist(eventId);
     }
-
-    return result;
-  }
-
-  // Promuove il primo partecipante dalla waitlist
-  private async promoteFromWaitlist(eventId: string) {
-    const firstWaitlisted = await this.prisma.participant.findFirst({
-      where: {
-        eventId,
-        status: 'WAITLIST',
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    if (firstWaitlisted) {
-      await this.prisma.participant.update({
-        where: { id: firstWaitlisted.id },
-        data: { status: 'REGISTERED' },
-      });
-    }
-  }
-
-  async updateEvent(
-    eventId: string,
-    clientId: string,
-    data: Partial<{
-      title: string;
-      description: string;
-      startTime: Date;
-      endTime: Date;
-      timezone: string;
-      status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
-      type: string;
-      coverImageUrl: string;
-      tags: string[];
-      categoryId: string;
-      locationName: string;
-      locationAddress: string;
-      locationUrl: string;
-      isOnline: boolean;
-      maxParticipants: number;
-      isPublic: boolean;
-      price: number;
-      currency: string;
-    }>,
-  ) {
-    return this.prisma.event.updateMany({
-      where: { id: eventId, clientId },
-      data,
-    });
   }
 
   async updateParticipantStatus(
@@ -299,23 +259,14 @@ export class EventService {
     clientId: string,
     status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED',
   ) {
-    const event = await this.prisma.event.findFirst({
-      where: { id: eventId, clientId },
-    });
+    const event = await this.prisma.event.findFirst({ where: { id: eventId, clientId } });
+    if (!event) throw new NotFoundException('Event not found');
 
-    if (!event) {
-      throw new Error('Evento non trovato');
-    }
-
-    const result = await this.prisma.participant.updateMany({
-      where: {
-        id: participantId,
-        eventId,
-      },
+    const result = await this.prisma.participant.update({
+      where: { id: participantId },
       data: { status },
     });
 
-    // Se un partecipante viene cancellato, promuovi dalla waitlist
     if (status === 'CANCELLED' && event.maxParticipants) {
       await this.promoteFromWaitlist(eventId);
     }
@@ -323,80 +274,91 @@ export class EventService {
     return result;
   }
 
-  async checkInParticipant(
-    participantId: string,
-    eventId: string,
-    clientId: string,
-  ) {
-    const event = await this.prisma.event.findFirst({
-      where: { id: eventId, clientId },
-    });
+  async checkInParticipant(participantId: string, eventId: string, clientId: string) {
+    const event = await this.prisma.event.findFirst({ where: { id: eventId, clientId } });
+    if (!event) throw new NotFoundException('Event not found');
 
-    if (!event) {
-      throw new Error('Evento non trovato');
-    }
-
-    return this.prisma.participant.updateMany({
-      where: {
-        id: participantId,
-        eventId,
-      },
-      data: {
-        checkedIn: true,
-        checkedInAt: new Date(),
-        status: 'ATTENDED',
-      },
+    return this.prisma.participant.update({
+      where: { id: participantId },
+      data: { checkedIn: true, checkedInAt: new Date(), status: 'ATTENDED' },
     });
   }
 
   async completeEvent(eventId: string, clientId: string) {
-    return this.prisma.event.updateMany({
-      where: { id: eventId, clientId },
+    await this.getEventById(eventId, clientId);
+    return this.prisma.event.update({
+      where: { id: eventId },
       data: { status: 'COMPLETED' },
+      include: EVENT_INCLUDE,
     });
   }
 
   async getEventStats(eventId: string, clientId: string) {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, clientId },
-      include: {
-        participants: true,
-      },
+      include: { participants: true },
     });
 
-    if (!event) {
-      throw new Error('Evento non trovato');
-    }
+    if (!event) throw new NotFoundException('Event not found');
 
-    const stats = {
-      totalParticipants: event.participants.length,
-      registered: event.participants.filter(p => p.status === 'REGISTERED').length,
-      confirmed: event.participants.filter(p => p.status === 'CONFIRMED').length,
-      waitlist: event.participants.filter(p => p.status === 'WAITLIST').length,
-      cancelled: event.participants.filter(p => p.status === 'CANCELLED').length,
-      attended: event.participants.filter(p => p.status === 'ATTENDED').length,
-      checkedIn: event.participants.filter(p => p.checkedIn).length,
-      availableSpots: event.maxParticipants
-        ? Math.max(0, event.maxParticipants - event.participants.filter(p => p.status === 'REGISTERED' || p.status === 'CONFIRMED').length)
-        : null,
+    const active = event.participants.filter(
+      (p) => p.status === 'REGISTERED' || p.status === 'CONFIRMED',
+    ).length;
+
+    return {
+      event,
+      stats: {
+        totalParticipants: event.participants.length,
+        registered: event.participants.filter((p) => p.status === 'REGISTERED').length,
+        confirmed: event.participants.filter((p) => p.status === 'CONFIRMED').length,
+        waitlist: event.participants.filter((p) => p.status === 'WAITLIST').length,
+        cancelled: event.participants.filter((p) => p.status === 'CANCELLED').length,
+        attended: event.participants.filter((p) => p.status === 'ATTENDED').length,
+        checkedIn: event.participants.filter((p) => p.checkedIn).length,
+        availableSpots: event.maxParticipants
+          ? Math.max(0, event.maxParticipants - active)
+          : null,
+      },
     };
-
-    return { event, stats };
   }
 
-  // Cron job per pulire eventi passati
+  private async promoteFromWaitlist(eventId: string) {
+    const first = await this.prisma.participant.findFirst({
+      where: { eventId, status: 'WAITLIST' },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (first) {
+      await this.prisma.participant.update({
+        where: { id: first.id },
+        data: { status: 'REGISTERED' },
+      });
+    }
+  }
+
+  private async resolveTagSlugs(clientId: string, slugs?: string[]): Promise<string[]> {
+    if (!slugs?.length) return [];
+
+    const tags = await Promise.all(
+      slugs.map((slug) =>
+        this.prisma.tag.upsert({
+          where: { clientId_slug: { clientId, slug: slug.toLowerCase() } },
+          create: { clientId, slug: slug.toLowerCase() },
+          update: {},
+        }),
+      ),
+    );
+
+    return tags.map((t) => t.id);
+  }
+
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async cleanupPastEvents() {
     await this.prisma.event.deleteMany({
       where: {
-        startTime: {
-          lt: new Date(),
-        },
-        parentEventId: {
-          not: null,
-        },
+        startTime: { lt: new Date() },
+        parentEventId: { not: null },
       },
     });
   }
 }
-

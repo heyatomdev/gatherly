@@ -13,6 +13,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { EventService } from './event.service';
 import { ClientAuthGuard } from '@/guards/client-auth.guard';
 import {
@@ -22,6 +23,7 @@ import {
   UpdateParticipantStatusDto,
 } from './dto/event.dto';
 
+@ApiTags('events')
 @Controller('events')
 @UseGuards(ClientAuthGuard)
 export class EventController {
@@ -29,16 +31,19 @@ export class EventController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createEvent(@Request() req, @Body() createEventDto: CreateEventDto) {
-    return this.eventService.createEvent(req.client.id, createEventDto);
+  @ApiOperation({ summary: 'Create event with translations and optional tags' })
+  async createEvent(@Request() req, @Body() dto: CreateEventDto) {
+    return this.eventService.createEvent(req.client.id, dto);
   }
 
   @Get()
+  @ApiOperation({ summary: 'List events for client with optional filters' })
   async getEvents(
     @Request() req,
     @Query('status') status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED',
     @Query('type') type?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('tagId') tagId?: string,
     @Query('isOnline') isOnline?: string,
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
@@ -47,6 +52,7 @@ export class EventController {
       status,
       type,
       categoryId,
+      tagId,
       isOnline: isOnline === 'true' ? true : isOnline === 'false' ? false : undefined,
       fromDate: fromDate ? new Date(fromDate) : undefined,
       toDate: toDate ? new Date(toDate) : undefined,
@@ -64,12 +70,13 @@ export class EventController {
   }
 
   @Patch(':eventId')
+  @ApiOperation({ summary: 'Update event — pass translations to upsert, tagSlugs to replace all tags' })
   async updateEvent(
     @Request() req,
     @Param('eventId') eventId: string,
-    @Body() data: UpdateEventDto,
+    @Body() dto: UpdateEventDto,
   ) {
-    return this.eventService.updateEvent(eventId, req.client.id, data);
+    return this.eventService.updateEvent(eventId, req.client.id, dto);
   }
 
   @Put(':eventId/complete')
@@ -79,12 +86,13 @@ export class EventController {
 
   @Post(':eventId/participants')
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Add participant — INLINE (direct data) or EXTERNAL (externalId + externalSource)' })
   async addParticipant(
     @Request() req,
     @Param('eventId') eventId: string,
-    @Body() data: AddParticipantDto,
+    @Body() dto: AddParticipantDto,
   ) {
-    return this.eventService.addParticipant(eventId, req.client.id, data);
+    return this.eventService.addParticipant(eventId, req.client.id, dto);
   }
 
   @Patch(':eventId/participants/:participantId/status')
@@ -108,21 +116,17 @@ export class EventController {
     @Param('eventId') eventId: string,
     @Param('participantId') participantId: string,
   ) {
-    return this.eventService.checkInParticipant(
-      participantId,
-      eventId,
-      req.client.id,
-    );
+    return this.eventService.checkInParticipant(participantId, eventId, req.client.id);
   }
 
-  @Delete(':eventId/participants/:userId')
-  @HttpCode(HttpStatus.OK)
+  @Delete(':eventId/participants/:participantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Cancel participant by participantId (marks as CANCELLED, promotes waitlist)' })
   async removeParticipant(
     @Request() req,
     @Param('eventId') eventId: string,
-    @Param('userId') userId: string,
+    @Param('participantId') participantId: string,
   ) {
-    return this.eventService.removeParticipant(eventId, req.client.id, userId);
+    return this.eventService.removeParticipant(eventId, req.client.id, participantId);
   }
 }
-
