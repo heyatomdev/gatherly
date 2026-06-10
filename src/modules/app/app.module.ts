@@ -8,6 +8,7 @@ import { configValidationSchema } from '@/configs/config.validation';
 import {ClientModule} from "@/modules/clients/client.module";
 import {EventModule} from "@/modules/events/event.module";
 import {CategoryModule} from "@/modules/categories/category.module";
+import {TagModule} from "@/modules/tags/tag.module";
 
 @Module({
     controllers: [StatusController],
@@ -27,7 +28,8 @@ import {CategoryModule} from "@/modules/categories/category.module";
         PrismaModule,
         ClientModule,
         EventModule,
-        CategoryModule
+        CategoryModule,
+        TagModule,
     ],
 })
 export class AppModule {}
