@@ -1,24 +1,16 @@
-/**
- * Tipi di eventi webhook supportati
- */
 export enum WebhookEventType {
-  // Event events
   EVENT_CREATED = 'event.created',
   EVENT_UPDATED = 'event.updated',
   EVENT_CANCELLED = 'event.cancelled',
   EVENT_PUBLISHED = 'event.published',
   EVENT_COMPLETED = 'event.completed',
 
-  // Participant events
   PARTICIPANT_JOINED = 'participant.joined',
   PARTICIPANT_STATUS_CHANGED = 'participant.status_changed',
   PARTICIPANT_REMOVED = 'participant.removed',
   PARTICIPANT_CHECKED_IN = 'participant.checked_in',
 }
 
-/**
- * Payload base per tutti i webhook
- */
 export interface WebhookPayload {
   event: WebhookEventType;
   timestamp: string;
@@ -26,14 +18,12 @@ export interface WebhookPayload {
   data: any;
 }
 
-/**
- * Event notification payload
- */
 export interface EventWebhookPayload extends WebhookPayload {
   data: {
     id: string;
     title: string;
     description?: string;
+    locale: string;
     authorId: string;
     authorName: string;
     authorEmail?: string;
@@ -43,33 +33,32 @@ export interface EventWebhookPayload extends WebhookPayload {
     status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
     type?: string;
     coverImageUrl?: string;
-    tags?: string[];
+    tags: string[];
     categoryId?: string;
+    categoryName?: string;
     locationName?: string;
     locationAddress?: string;
     locationUrl?: string;
     isOnline: boolean;
     maxParticipants?: number;
     isPublic: boolean;
-    price?: number;
+    price?: any;
     currency?: string;
-    isRecurring?: boolean;
     createdAt: Date;
     updatedAt: Date;
   };
 }
 
-/**
- * Participant notification payload
- */
 export interface ParticipantWebhookPayload extends WebhookPayload {
   data: {
     id: string;
     eventId: string;
     eventTitle: string;
-    userId: string;
+    type: 'INLINE' | 'EXTERNAL';
     userName: string;
     email?: string;
+    externalId?: string;
+    externalSource?: string;
     status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
     previousStatus?: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
     role: 'ATTENDEE' | 'SPEAKER' | 'ORGANIZER' | 'HOST';
@@ -79,4 +68,3 @@ export interface ParticipantWebhookPayload extends WebhookPayload {
     createdAt: Date;
   };
 }
-
