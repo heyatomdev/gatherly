@@ -14,7 +14,9 @@ import {
 import { CategoryService } from './category.service';
 import { ClientAuthGuard } from '@/guards/client-auth.guard';
 import { CreateCategoryDto, UpdateCategoryDto, CategoryResponseDto } from './dto/category.dto';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('categories')
 @Controller('categories')
 @UseGuards(ClientAuthGuard)
 export class CategoryController {
