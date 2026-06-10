@@ -11,6 +11,7 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+// ─── CLIENT ─────────────────────────────────────────────────────────────────
 
 model Client {
   id        String    @id @default(uuid())
@@ -20,82 +21,105 @@ model Client {
   revokedAt DateTime?
   createdAt DateTime  @default(now())
 
-  // Notifiche email
-  emailActive Boolean @default(false) // true: gestisce autonomamente le mail, false: usa notifiche app
-
-  // Webhook per integrazioni (Discord, Slack, etc)
-  webhookUrl String?
+  defaultLocale String  @default("it") // fallback lingua
+  emailActive   Boolean @default(false)
+  webhookUrl    String?
 
   events          Event[]
   eventCategories EventCategory[]
+  tags            Tag[]
 
   @@map("clients")
 }
+
+// ─── CATEGORY + i18n ────────────────────────────────────────────────────────
 
 model EventCategory {
   id       String  @id @default(uuid())
   clientId String
   client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name     String
-  color    String? // per UI/calendario
+  color    String?
   icon     String?
 
-  events Event[]
+  translations EventCategoryTranslation[]
+  events       Event[]
 
-  @@unique([clientId, name])
   @@index([clientId])
   @@map("event_categories")
 }
 
+model EventCategoryTranslation {
+  id         String        @id @default(uuid())
+  categoryId String
+  category   EventCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  locale     String // "it", "en"
+  name       String
+
+  @@unique([categoryId, locale])
+  @@index([locale])
+  @@map("event_category_translations")
+}
+
+// ─── RECURRENCE (estratto) ──────────────────────────────────────────────────
+
+model RecurrenceRule {
+  id      String    @id @default(uuid())
+  rule    String // RRULE iCal: FREQ=WEEKLY;BYDAY=MO,WE
+  endDate DateTime?
+  count   Int?
+
+  events Event[]
+
+  @@map("recurrence_rules")
+}
+
+// ─── EVENT + i18n ───────────────────────────────────────────────────────────
+
 model Event {
-  id            String      @id @default(uuid())
-  title         String
-  description   String?
+  id            String @id @default(uuid())
   clientId      String
-  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  authorId      String
-  authorName    String
-  authorEmail   String?
+  client        Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  defaultLocale String @default("it")
+
+  // Author (può essere external, manteniamo snapshot)
+  authorId    String
+  authorName  String
+  authorEmail String?
+
   startTime     DateTime
   endTime       DateTime?
   timezone      String      @default("Europe/Rome")
   status        EventStatus @default(DRAFT)
-  type          String? // "lesson", "live", "gaming", "seminar", ecc.
+  type          String? // "lesson", "gaming", "seminar" — libero per flessibilità
   coverImageUrl String?
-  tags          String[] // array nativo PostgreSQL
 
-  // Categoria opzionale
   categoryId String?
   category   EventCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
-  // Location (fisica o virtuale)
   locationName    String?
   locationAddress String?
-  locationUrl     String? // per eventi online/stream
+  locationUrl     String?
   isOnline        Boolean @default(false)
 
-  // Capacità
   maxParticipants Int?
   isPublic        Boolean @default(true)
 
-  // Pricing opzionale
   price    Decimal? @db.Decimal(10, 2)
   currency String?  @default("EUR")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Ricorrenza
-  recurrenceId      String?
-  recurrenceRule    String? // formato iCal RRULE: FREQ=WEEKLY;BYDAY=MO,WE
-  recurrenceEndDate DateTime?
-  recurrenceCount   Int?
-  isRecurring       Boolean   @default(false)
-  parentEventId     String?
-  parentEvent       Event?    @relation("EventRecurrence", fields: [parentEventId], references: [id], onDelete: Cascade)
-  childEvents       Event[]   @relation("EventRecurrence")
+  // Recurrence — ora FK pulita
+  recurrenceRuleId String?
+  recurrenceRule   RecurrenceRule? @relation(fields: [recurrenceRuleId], references: [id], onDelete: SetNull)
+  parentEventId    String?
+  parentEvent      Event?          @relation("EventRecurrence", fields: [parentEventId], references: [id], onDelete: Cascade)
+  childEvents      Event[]         @relation("EventRecurrence")
 
+  translations EventTranslation[]
   participants Participant[]
+  tags         EventTag[]
 
   @@index([clientId])
   @@index([categoryId])
@@ -105,26 +129,87 @@ model Event {
   @@map("events")
 }
 
-model Participant {
-  id          String            @id @default(uuid())
+model EventTranslation {
+  id          String  @id @default(uuid())
   eventId     String
-  event       Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  userId      String
-  userName    String
-  email       String? // email del partecipante per contatti
+  event       Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  locale      String // "it", "en"
+  title       String
+  description String?
+
+  @@unique([eventId, locale])
+  @@index([eventId])
+  @@index([locale])
+  @@map("event_translations")
+}
+
+// ─── TAG ─────────────────────────────────────────────────────────────────────
+
+model Tag {
+  id       String  @id @default(uuid())
+  clientId String
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  slug     String  // lowercase, normalizzato: "5v5", "yoga", "competitive"
+  label    Json?   // label localizzata: {"it": "Competitivo", "en": "Competitive"}
+
+  events EventTag[]
+
+  @@unique([clientId, slug])
+  @@index([clientId])
+  @@map("tags")
+}
+
+model EventTag {
+  eventId String
+  tagId   String
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, tagId])
+  @@map("event_tags")
+}
+
+// ─── PARTICIPANT ─────────────────────────────────────────────────────────────
+
+enum ParticipantType {
+  INLINE // dati forniti direttamente, nessun account
+  EXTERNAL // utente da app terza, identificato da externalId
+}
+
+model Participant {
+  id      String          @id @default(uuid())
+  eventId String
+  event   Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  type    ParticipantType @default(INLINE)
+
+  // INLINE — dati diretti
+  userName String
+  email    String?
+
+  // EXTERNAL — riferimento app terza
+  externalId     String? // ID utente nell'app chiamante
+  externalSource String? // "discord", "steam", "myapp" — slug libero
+
   status      ParticipantStatus @default(REGISTERED)
   role        ParticipantRole   @default(ATTENDEE)
-  notes       String? // note dell'organizzatore sul partecipante
+  notes       String?
   checkedIn   Boolean           @default(false)
   checkedInAt DateTime?
   createdAt   DateTime          @default(now())
 
-  @@unique([eventId, userId])
+  // Escape hatch per dati domain-specific (rank, team, membership, ecc.)
+  metadata Json?
+
+  // Unique: un utente esterno unico per evento+source
+  // Per INLINE usiamo solo id (no unique su email, può partecipare più volte con ruoli diversi)
+  @@unique([eventId, externalId, externalSource])
   @@index([eventId])
-  @@index([userId])
+  @@index([externalId])
   @@index([status])
   @@map("participants")
 }
+
+// ─── ENUMS ──────────────────────────────────────────────────────────────────
 
 enum EventStatus {
   DRAFT
