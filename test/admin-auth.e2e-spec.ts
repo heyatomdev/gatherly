@@ -1,6 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import * as request from 'supertest';
+import request = require('supertest');
 import { AppModule } from '@/modules/app/app.module';
 import { BastionJwksService } from '@/modules/bastion/bastion-jwks.service';
 import { PrismaService } from '@/modules/prisma/prisma.service';
@@ -27,6 +27,8 @@ const activeClient = {
   revokedAt: null,
 };
 
+// Mirrors a real Bastion USER token: it carries no `type` field (only machine
+// tokens set `type: 'service_client'`). Overrides can add `type` to simulate one.
 function makePayload(overrides: Record<string, unknown> = {}) {
   return {
     sub: 'user-e2e',
@@ -35,7 +37,6 @@ function makePayload(overrides: Record<string, unknown> = {}) {
     email: 'admin@acme.com',
     appSlug: 'gatherly',
     role: 'ADMIN',
-    type: 'user',
     iat: 0,
     exp: 9999999999,
     ...overrides,
@@ -48,6 +49,8 @@ describe('Admin API auth (e2e)', () => {
   let prisma: PrismaService;
 
   beforeAll(async () => {
+    // ADMIN_ACCEPTED_APP_SLUGS (incl. meridian) is set in test/setup-e2e.ts, which
+    // runs before AppModule is imported so ConfigModule validates it correctly.
     const module = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -148,12 +151,37 @@ describe('Admin API auth (e2e)', () => {
         .set('Authorization', 'Bearer owner-token')
         .expect(200);
     });
+
+    it('accepts a real Bastion user token that has no "type" field', async () => {
+      // makePayload() already omits `type` — this documents the real token shape.
+      jwks.verify.mockResolvedValue(makePayload() as any);
+      jest.spyOn(prisma.client, 'findUnique').mockResolvedValue(activeClient as any);
+      jest.spyOn(prisma, '$transaction').mockResolvedValue([[], 0] as any);
+
+      await request(app.getHttpServer())
+        .get('/admin/events')
+        .set('Authorization', 'Bearer no-type-token')
+        .expect(200);
+    });
+
+    it('accepts an allowlisted console app token (appSlug=meridian)', async () => {
+      // Meridian forwards its own user-JWT (appSlug=meridian); refresh is app-bound
+      // so it cannot be exchanged for a gatherly-scoped token.
+      jwks.verify.mockResolvedValue(makePayload({ appSlug: 'meridian' }) as any);
+      jest.spyOn(prisma.client, 'findUnique').mockResolvedValue(activeClient as any);
+      jest.spyOn(prisma, '$transaction').mockResolvedValue([[], 0] as any);
+
+      await request(app.getHttpServer())
+        .get('/admin/events')
+        .set('Authorization', 'Bearer meridian-token')
+        .expect(200);
+    });
   });
 
   describe('Service-client token on /admin (global guard bypass)', () => {
     it('service-client Bearer token rejected by BastionUserGuard with 401', async () => {
       // Global BastionJwtGuard skips /admin/* — BastionUserGuard takes over
-      // and rejects type !== 'user'
+      // and rejects machine tokens (type === 'service_client')
       jwks.verify.mockResolvedValue(
         makePayload({ type: 'service_client', role: undefined }) as any,
       );

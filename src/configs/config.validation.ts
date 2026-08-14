@@ -62,6 +62,13 @@ class EnvironmentVariables {
   @IsOptional()
   @IsNumber()
   BASTION_JWKS_TTL_MS: number = 3_600_000;
+
+  // Comma-separated appSlug allowlist accepted by the admin API (Bastion user-JWT).
+  // Includes the central console app (e.g. `meridian`) since refresh tokens are app-bound
+  // and cannot be exchanged across apps.
+  @IsOptional()
+  @IsString()
+  ADMIN_ACCEPTED_APP_SLUGS: string = 'gatherly';
 }
 
 export function validate(config: Record<string, unknown>) {
