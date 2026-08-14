@@ -5,18 +5,21 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
 }
+
 // ─── CLIENT ─────────────────────────────────────────────────────────────────
 
 model Client {
   id        String    @id @default(uuid())
   name      String
   token     String    @unique
+  tenantId  String?   @unique
   isActive  Boolean   @default(true)
   revokedAt DateTime?
   createdAt DateTime  @default(now())
@@ -25,9 +28,12 @@ model Client {
   emailActive   Boolean @default(false)
   webhookUrl    String?
 
-  events          Event[]
-  eventCategories EventCategory[]
-  tags            Tag[]
+  webhookSecret String?
+
+  events            Event[]
+  eventCategories   EventCategory[]
+  tags              Tag[]
+  webhookDeliveries WebhookDelivery[]
 
   @@map("clients")
 }
@@ -231,4 +237,49 @@ enum ParticipantRole {
   SPEAKER
   ORGANIZER
   HOST
+}
+
+// ─── WEBHOOK DELIVERY ────────────────────────────────────────────────────────
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+model WebhookDelivery {
+  id          String                @id @default(uuid())
+  clientId    String
+  client      Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  eventType   String
+  payload     Json
+  webhookUrl  String
+  attempts    Int                   @default(0)
+  maxAttempts Int                   @default(5)
+  nextRetryAt DateTime              @default(now())
+  lastError   String?
+  status      WebhookDeliveryStatus @default(PENDING)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([status, nextRetryAt])
+  @@index([clientId])
+  @@map("webhook_deliveries")
+}
+
+// ─── IDEMPOTENCY KEYS ────────────────────────────────────────────────────────
+
+model IdempotencyKey {
+  id           String   @id @default(uuid())
+  key          String
+  clientId     String
+  path         String
+  responseBody Json
+  statusCode   Int
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@unique([key, clientId, path])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
 }

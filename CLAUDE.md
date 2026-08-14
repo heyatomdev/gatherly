@@ -283,3 +283,22 @@ Webhook failures are caught and logged — they never break the main operation.
 5. Add to `AppModule` imports
 
 Do NOT add `PrismaService` to module providers — it is globally provided.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Docs
+
+- `docs/GATHERLY_INTEGRATION.md` — integration guide per altri servizi (fonte di verità in `../docs/`)
+- `docs/dev-plans/` — piani di sviluppo storici
+- `../docs/BASTION_INTEGRATION.md` — Bastion JWT/JWKS guide (NB: Gatherly usa X-Client-Token, non Bastion)
+- `../docs/FILEHARBOR_INTEGRATION.md` — FileHarbor integration guide
+- `../docs/ARTICUNO_INTEGRATION.md` — Articuno integration guide
+- `../docs/CODING_STANDARDS.md` — NestJS conventions condivise

@@ -18,6 +18,8 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+graphify-out/
+
 # OS
 .DS_Store
 

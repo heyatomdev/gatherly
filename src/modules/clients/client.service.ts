@@ -26,7 +26,9 @@ export class ClientService {
         defaultLocale: dto.defaultLocale ?? 'it',
         emailActive: dto.emailActive ?? false,
         webhookUrl: dto.webhookUrl,
+        webhookSecret: randomBytes(32).toString('hex'),
       },
+      select: { ...CLIENT_SELECT_SAFE, token: true },
     });
   }
 
@@ -61,6 +63,27 @@ export class ClientService {
       where: { id },
       data: { token: this.generateToken() },
       select: { id: true, name: true, token: true },
+    });
+  }
+
+  async regenerateWebhookSecret(id: string) {
+    await this.findOrFail(id);
+    return this.prisma.client.update({
+      where: { id },
+      data: { webhookSecret: randomBytes(32).toString('hex') },
+      select: { id: true, webhookSecret: true },
+    });
+  }
+
+  async getWebhookDeliveries(id: string, status?: string) {
+    await this.findOrFail(id);
+    return this.prisma.webhookDelivery.findMany({
+      where: {
+        clientId: id,
+        ...(status && { status: status as any }),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
     });
   }
 

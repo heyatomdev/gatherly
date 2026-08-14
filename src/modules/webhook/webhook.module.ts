@@ -5,6 +5,6 @@ import { HttpModule } from '@nestjs/axios';
 @Module({
   providers: [WebhookService],
   exports: [WebhookService],
-  imports: [HttpModule]
+  imports: [HttpModule],
 })
 export class WebhookModule {}

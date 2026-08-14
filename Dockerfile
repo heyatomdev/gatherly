@@ -1,28 +1,34 @@
-FROM node:24.15.0-alpine3.23 AS base
+FROM node:24.15.0-slim AS builder
 
 ENV NODE_ENV=build
 
 # Create app directory
 WORKDIR /usr/src/app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm and build dependencies
+RUN npm install -g pnpm@8.15.0
 
-RUN apk add --no-cache openssl curl
+# Install build deps needed for native modules and prisma generation
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential python3 curl ca-certificates gcc g++ make && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install app dependencies
-COPY package.json pnpm-lock.yaml ./
-
-RUN pnpm install --frozen-lockfile
+# Install app dependencies (including dev dependencies) for the build
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN pnpm install --no-frozen-lockfile
 
 # Bundle app source
 COPY . .
 
+# Generate Prisma client and build
 RUN pnpm run prisma:generate
-
 RUN pnpm build
 
-FROM base AS prod-build
+# Remove devDependencies to keep only production deps (pruned node_modules)
+RUN pnpm prune --prod
+
+# Start a fresh runtime image
+FROM node:24.15.0-slim AS prod
 
 # Set the NODE_ENV to production
 ENV NODE_ENV=production
@@ -30,16 +36,22 @@ ENV NODE_ENV=production
 # Create app directory
 WORKDIR /usr/src/app
 
-COPY prisma prisma
+# Create a non-root user and group with specific UID/GID to match host user
+RUN groupadd -g 1001 app && useradd -u 1001 -g app -m app
 
-RUN pnpm run prisma:generate
+# Install runtime dependencies for Sharp image processing
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libvips-dev && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install app dependencies
-COPY package.json pnpm-lock.yaml ./
+# Copy built artifacts and dependencies from builder with ownership set during copy
+COPY --chown=app:app package.json pnpm-lock.yaml ./
+COPY --from=builder --chown=app:app /usr/src/app/prisma ./prisma
+COPY --from=builder --chown=app:app /usr/src/app/dist ./dist
+COPY --from=builder --chown=app:app /usr/src/app/node_modules ./node_modules
 
-RUN pnpm install --prod --frozen-lockfile
-
-COPY --from=base /usr/src/app/dist ./dist
+# Switch to non-root user
+USER app
 
 # Start the server using the production build
-CMD [ "node", "dist/src/main.js" ]
+CMD [ "node", "dist/main.js" ]

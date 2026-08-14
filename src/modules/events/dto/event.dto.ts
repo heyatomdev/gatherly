@@ -9,12 +9,15 @@ import {
   IsUrl,
   IsObject,
   Min,
+  Max,
   MaxLength,
   ValidateNested,
   ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PageParams } from '@/common/pagination';
 
 export class EventTranslationDto {
   @ApiProperty({ example: 'it' })
@@ -148,6 +151,7 @@ export class CreateEventDto {
   @ApiPropertyOptional({ description: 'iCal RRULE string e.g. FREQ=WEEKLY;BYDAY=MO' })
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   recurrenceRule?: string;
 
   @ApiPropertyOptional()
@@ -159,6 +163,7 @@ export class CreateEventDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
+  @Max(365)
   @Type(() => Number)
   recurrenceCount?: number;
 }
@@ -303,4 +308,85 @@ export class UpdateParticipantStatusDto {
   @ApiProperty({ enum: ['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'] })
   @IsEnum(['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'])
   status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
+}
+
+export class GetEventsQueryDto extends PageParams {
+  @ApiPropertyOptional({ enum: ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'] })
+  @IsOptional()
+  @IsEnum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'])
+  status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  tagId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : undefined))
+  @IsBoolean()
+  isOnline?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  fromDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  toDate?: string;
+}
+
+export class GetParticipantsQueryDto extends PageParams {
+  @ApiPropertyOptional({ enum: ['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'] })
+  @IsOptional()
+  @IsEnum(['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'])
+  status?: string;
+
+  @ApiPropertyOptional({ enum: ['ATTENDEE', 'SPEAKER', 'ORGANIZER', 'HOST'] })
+  @IsOptional()
+  @IsEnum(['ATTENDEE', 'SPEAKER', 'ORGANIZER', 'HOST'])
+  role?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  externalSource?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  externalId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : undefined))
+  @IsBoolean()
+  checkedIn?: boolean;
+}
+
+export class BulkAddParticipantsDto {
+  @ApiProperty({ type: [AddParticipantDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => AddParticipantDto)
+  participants: AddParticipantDto[];
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  skipDuplicates?: boolean;
 }

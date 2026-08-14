@@ -1,8 +1,25 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { DateTime } from 'luxon';
 import { rrulestr } from 'rrule';
-import { CreateEventDto, UpdateEventDto, AddParticipantDto } from './dto/event.dto';
+import { PrismaService } from '../prisma/prisma.service';
+import { BastionAuditService } from '../bastion/bastion-audit.service';
+import {
+  CreateEventDto,
+  UpdateEventDto,
+  AddParticipantDto,
+  GetEventsQueryDto,
+  GetParticipantsQueryDto,
+  BulkAddParticipantsDto,
+} from './dto/event.dto';
+import { PageParams, PaginatedResult, paginate } from '@/common/pagination';
 
 const EVENT_INCLUDE = {
   translations: true,
@@ -12,9 +29,27 @@ const EVENT_INCLUDE = {
   recurrenceRule: true,
 };
 
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['PUBLISHED', 'CANCELLED'],
+  PUBLISHED: ['CANCELLED', 'COMPLETED'],
+  CANCELLED: [],
+  COMPLETED: [],
+};
+
+const RETENTION_DAYS = 90;
+
 @Injectable()
 export class EventService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private audit: BastionAuditService,
+  ) {}
+
+  private assertTransition(from: string, to: string) {
+    if (!VALID_TRANSITIONS[from]?.includes(to)) {
+      throw new BadRequestException(`Cannot transition event from ${from} to ${to}`);
+    }
+  }
 
   async createEvent(clientId: string, data: CreateEventDto) {
     let recurrenceRuleId: string | undefined;
@@ -30,6 +65,13 @@ export class EventService {
     }
 
     const tagConnections = await this.resolveTagSlugs(clientId, data.tagSlugs);
+
+    if (data.categoryId) {
+      const category = await this.prisma.eventCategory.findFirst({
+        where: { id: data.categoryId, clientId },
+      });
+      if (!category) throw new NotFoundException('Category not found');
+    }
 
     const event = await this.prisma.event.create({
       data: {
@@ -64,95 +106,117 @@ export class EventService {
       await this.generateRecurringInstances(event);
     }
 
+    this.audit.write('event.created', { metadata: { eventId: event.id, clientId } });
+
     return event;
   }
 
   private async generateRecurringInstances(parentEvent: any) {
-    try {
-      const rule = parentEvent.recurrenceRule;
-      if (!rule) return;
+    const rule = parentEvent.recurrenceRule;
+    if (!rule) return;
 
-      const rrule = rrulestr(rule.rule, { dtstart: parentEvent.startTime });
-      const maxOccurrences = rule.count ?? 52;
-      const endDate = rule.endDate;
+    const tz = parentEvent.timezone ?? 'UTC';
 
-      let occurrences = rrule.all((_, count) => count < maxOccurrences);
-      if (endDate) occurrences = occurrences.filter((d) => d <= endDate);
+    const dtstart = DateTime.fromJSDate(parentEvent.startTime, { zone: 'utc' })
+      .setZone(tz)
+      .toJSDate();
 
-      const duration = parentEvent.endTime
-        ? parentEvent.endTime.getTime() - parentEvent.startTime.getTime()
-        : null;
+    const rrule = rrulestr(rule.rule, { dtstart, tzid: tz });
+    const maxOccurrences = rule.count ?? 52;
+    const endDate = rule.endDate;
 
-      for (const occurrence of occurrences) {
-        if (occurrence > new Date()) {
-          await this.prisma.event.create({
-            data: {
-              clientId: parentEvent.clientId,
-              defaultLocale: parentEvent.defaultLocale,
-              authorId: parentEvent.authorId,
-              authorName: parentEvent.authorName,
-              authorEmail: parentEvent.authorEmail,
-              startTime: occurrence,
-              endTime: duration ? new Date(occurrence.getTime() + duration) : undefined,
-              timezone: parentEvent.timezone,
-              status: parentEvent.status,
-              type: parentEvent.type,
-              coverImageUrl: parentEvent.coverImageUrl,
-              categoryId: parentEvent.categoryId,
-              locationName: parentEvent.locationName,
-              locationAddress: parentEvent.locationAddress,
-              locationUrl: parentEvent.locationUrl,
-              isOnline: parentEvent.isOnline,
-              maxParticipants: parentEvent.maxParticipants,
-              isPublic: parentEvent.isPublic,
-              price: parentEvent.price,
-              currency: parentEvent.currency,
-              parentEventId: parentEvent.id,
-              translations: {
-                create: parentEvent.translations.map((t: any) => ({
-                  locale: t.locale,
-                  title: t.title,
-                  description: t.description,
-                })),
-              },
-              tags: {
-                create: parentEvent.tags.map((et: any) => ({ tagId: et.tagId })),
-              },
-            },
-          });
-        }
+    let occurrences = rrule
+      .all((_, count) => count < maxOccurrences)
+      .filter((d) => d.getTime() !== parentEvent.startTime.getTime());
+
+    if (endDate) occurrences = occurrences.filter((d) => d <= endDate);
+
+    const duration = parentEvent.endTime
+      ? parentEvent.endTime.getTime() - parentEvent.startTime.getTime()
+      : null;
+
+    const futureOccurrences = occurrences.filter((o) => o > new Date());
+    if (!futureOccurrences.length) return;
+
+    const eventIds = futureOccurrences.map(() => randomUUID());
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.event.createMany({
+        data: futureOccurrences.map((occurrence, i) => ({
+          id: eventIds[i],
+          clientId: parentEvent.clientId,
+          defaultLocale: parentEvent.defaultLocale,
+          authorId: parentEvent.authorId,
+          authorName: parentEvent.authorName,
+          authorEmail: parentEvent.authorEmail,
+          startTime: occurrence,
+          endTime: duration ? new Date(occurrence.getTime() + duration) : undefined,
+          timezone: tz,
+          status: parentEvent.status,
+          type: parentEvent.type,
+          coverImageUrl: parentEvent.coverImageUrl,
+          categoryId: parentEvent.categoryId,
+          locationName: parentEvent.locationName,
+          locationAddress: parentEvent.locationAddress,
+          locationUrl: parentEvent.locationUrl,
+          isOnline: parentEvent.isOnline,
+          maxParticipants: parentEvent.maxParticipants,
+          isPublic: parentEvent.isPublic,
+          price: parentEvent.price,
+          currency: parentEvent.currency,
+          parentEventId: parentEvent.id,
+          recurrenceRuleId: parentEvent.recurrenceRuleId,
+        })),
+      });
+
+      const translationData = eventIds.flatMap((eventId) =>
+        parentEvent.translations.map((t: any) => ({
+          eventId,
+          locale: t.locale,
+          title: t.title,
+          description: t.description ?? null,
+        })),
+      );
+      if (translationData.length) {
+        await tx.eventTranslation.createMany({ data: translationData });
       }
-    } catch (error) {
-      console.error('Errore nella generazione ricorrenze:', error);
-    }
+
+      const tagData = eventIds.flatMap((eventId) =>
+        parentEvent.tags.map((et: any) => ({ eventId, tagId: et.tagId })),
+      );
+      if (tagData.length) {
+        await tx.eventTag.createMany({ data: tagData });
+      }
+    });
   }
 
   async getEventsByClient(
     clientId: string,
-    filters?: {
-      status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
-      type?: string;
-      categoryId?: string;
-      tagId?: string;
-      isOnline?: boolean;
-      fromDate?: Date;
-      toDate?: Date;
-    },
-  ) {
-    return this.prisma.event.findMany({
-      where: {
-        clientId,
-        ...(filters?.status && { status: filters.status }),
-        ...(filters?.type && { type: filters.type }),
-        ...(filters?.categoryId && { categoryId: filters.categoryId }),
-        ...(filters?.tagId && { tags: { some: { tagId: filters.tagId } } }),
-        ...(filters?.isOnline !== undefined && { isOnline: filters.isOnline }),
-        ...(filters?.fromDate && { startTime: { gte: filters.fromDate } }),
-        ...(filters?.toDate && { startTime: { lte: filters.toDate } }),
-      },
-      include: EVENT_INCLUDE,
-      orderBy: { startTime: 'asc' },
-    });
+    filters: GetEventsQueryDto,
+  ): Promise<PaginatedResult<any>> {
+    const where: Prisma.EventWhereInput = {
+      clientId,
+      ...(filters.status && { status: filters.status }),
+      ...(filters.type && { type: filters.type }),
+      ...(filters.categoryId && { categoryId: filters.categoryId }),
+      ...(filters.tagId && { tags: { some: { tagId: filters.tagId } } }),
+      ...(filters.isOnline !== undefined && { isOnline: filters.isOnline }),
+      ...(filters.fromDate && { startTime: { gte: new Date(filters.fromDate) } }),
+      ...(filters.toDate && { startTime: { lte: new Date(filters.toDate) } }),
+    };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.event.findMany({
+        where,
+        include: EVENT_INCLUDE,
+        orderBy: { startTime: 'asc' },
+        skip: filters.skip,
+        take: filters.limit,
+      }),
+      this.prisma.event.count({ where }),
+    ]);
+
+    return paginate(data, total, filters);
   }
 
   async getEventById(eventId: string, clientId: string) {
@@ -173,9 +237,19 @@ export class EventService {
   async updateEvent(eventId: string, clientId: string, data: UpdateEventDto) {
     await this.getEventById(eventId, clientId);
 
-    if (data.translations?.length) {
+    const { translations, tagSlugs, ...scalarData } = data;
+
+    if (scalarData.status) {
+      const current = await this.prisma.event.findFirst({
+        where: { id: eventId, clientId },
+        select: { status: true },
+      });
+      this.assertTransition(current!.status, scalarData.status);
+    }
+
+    if (translations?.length) {
       await Promise.all(
-        data.translations.map((t) =>
+        translations.map((t) =>
           this.prisma.eventTranslation.upsert({
             where: { eventId_locale: { eventId, locale: t.locale } },
             create: { eventId, locale: t.locale, title: t.title, description: t.description },
@@ -185,8 +259,8 @@ export class EventService {
       );
     }
 
-    if (data.tagSlugs !== undefined) {
-      const tagIds = await this.resolveTagSlugs(clientId, data.tagSlugs);
+    if (tagSlugs !== undefined) {
+      const tagIds = await this.resolveTagSlugs(clientId, tagSlugs);
       await this.prisma.eventTag.deleteMany({ where: { eventId } });
       if (tagIds.length) {
         await this.prisma.eventTag.createMany({
@@ -195,7 +269,12 @@ export class EventService {
       }
     }
 
-    const { translations, tagSlugs, ...scalarData } = data;
+    if (scalarData.categoryId) {
+      const category = await this.prisma.eventCategory.findFirst({
+        where: { id: scalarData.categoryId, clientId },
+      });
+      if (!category) throw new NotFoundException('Category not found');
+    }
 
     return this.prisma.event.update({
       where: { id: eventId },
@@ -208,49 +287,257 @@ export class EventService {
     });
   }
 
-  async addParticipant(eventId: string, clientId: string, data: AddParticipantDto) {
-    const event = await this.prisma.event.findFirst({
-      where: { id: eventId, clientId },
-      include: {
-        participants: { where: { status: { in: ['REGISTERED', 'CONFIRMED'] } } },
-      },
+  async cancelEvent(eventId: string, clientId: string) {
+    const event = await this.getEventById(eventId, clientId);
+    this.assertTransition(event.status, 'CANCELLED');
+
+    const updated = await this.prisma.event.update({
+      where: { id: eventId },
+      data: { status: 'CANCELLED' },
+      include: EVENT_INCLUDE,
     });
 
-    if (!event) throw new NotFoundException('Event not found');
-
-    let participantStatus: 'REGISTERED' | 'WAITLIST' = 'REGISTERED';
-    if (event.maxParticipants && event.participants.length >= event.maxParticipants) {
-      participantStatus = 'WAITLIST';
-    }
-
-    return this.prisma.participant.create({
-      data: {
-        eventId,
-        type: data.type ?? 'INLINE',
-        userName: data.userName,
-        email: data.email,
-        externalId: data.externalId,
-        externalSource: data.externalSource,
-        status: participantStatus,
-        role: data.role ?? 'ATTENDEE',
-        notes: data.notes,
-        metadata: data.metadata,
+    await this.prisma.event.updateMany({
+      where: {
+        parentEventId: eventId,
+        startTime: { gt: new Date() },
+        status: { notIn: ['CANCELLED', 'COMPLETED'] },
       },
-    });
-  }
-
-  async removeParticipant(eventId: string, clientId: string, participantId: string) {
-    const event = await this.prisma.event.findFirst({ where: { id: eventId, clientId } });
-    if (!event) throw new NotFoundException('Event not found');
-
-    await this.prisma.participant.update({
-      where: { id: participantId },
       data: { status: 'CANCELLED' },
     });
 
-    if (event.maxParticipants) {
-      await this.promoteFromWaitlist(eventId);
+    this.audit.write('event.cancelled', { metadata: { eventId, clientId } });
+
+    return updated;
+  }
+
+  async publishEvent(eventId: string, clientId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, clientId },
+      include: { translations: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    this.assertTransition(event.status, 'PUBLISHED');
+
+    if (!event.translations.length || !event.translations[0].title?.trim()) {
+      throw new BadRequestException('Event must have at least one translation with a title');
     }
+    if (event.startTime <= new Date()) {
+      throw new BadRequestException('Cannot publish an event with a start time in the past');
+    }
+
+    const published = await this.prisma.event.update({
+      where: { id: eventId },
+      data: { status: 'PUBLISHED' },
+      include: EVENT_INCLUDE,
+    });
+
+    this.audit.write('event.published', { metadata: { eventId, clientId } });
+
+    return published;
+  }
+
+  async completeEvent(eventId: string, clientId: string) {
+    const event = await this.getEventById(eventId, clientId);
+    this.assertTransition(event.status, 'COMPLETED');
+
+    const completed = await this.prisma.event.update({
+      where: { id: eventId },
+      data: { status: 'COMPLETED' },
+      include: EVENT_INCLUDE,
+    });
+
+    this.audit.write('event.completed', { metadata: { eventId, clientId } });
+
+    return completed;
+  }
+
+  async getParticipants(
+    eventId: string,
+    clientId: string,
+    query: GetParticipantsQueryDto,
+  ): Promise<PaginatedResult<any>> {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, clientId },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const where: Prisma.ParticipantWhereInput = {
+      eventId,
+      ...(query.status && { status: query.status as any }),
+      ...(query.role && { role: query.role as any }),
+      ...(query.externalSource && { externalSource: query.externalSource }),
+      ...(query.externalId && { externalId: query.externalId }),
+      ...(query.checkedIn !== undefined && { checkedIn: query.checkedIn }),
+    };
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.participant.findMany({
+        where,
+        orderBy: { createdAt: 'asc' },
+        skip: query.skip,
+        take: query.limit,
+      }),
+      this.prisma.participant.count({ where }),
+    ]);
+
+    return paginate(data, total, query);
+  }
+
+  async addParticipant(eventId: string, clientId: string, data: AddParticipantDto) {
+    try {
+      const participant = await this.prisma.$transaction(
+        async (tx) => {
+          const event = await tx.event.findFirst({
+            where: { id: eventId, clientId },
+            include: {
+              participants: { where: { status: { in: ['REGISTERED', 'CONFIRMED'] } } },
+            },
+          });
+
+          if (!event) throw new NotFoundException('Event not found');
+
+          const participantStatus: 'REGISTERED' | 'WAITLIST' =
+            event.maxParticipants && event.participants.length >= event.maxParticipants
+              ? 'WAITLIST'
+              : 'REGISTERED';
+
+          return tx.participant.create({
+            data: {
+              eventId,
+              type: data.type ?? 'INLINE',
+              userName: data.userName,
+              email: data.email,
+              externalId: data.externalId,
+              externalSource: data.externalSource,
+              status: participantStatus,
+              role: data.role ?? 'ATTENDEE',
+              notes: data.notes,
+              metadata: data.metadata,
+            },
+          });
+        },
+        { isolationLevel: 'Serializable' },
+      );
+
+      this.audit.write('participant.joined', {
+        metadata: { eventId, clientId, participantId: participant.id },
+      });
+
+      return participant;
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException('Participant already registered for this event');
+      }
+      throw error;
+    }
+  }
+
+  async addParticipantsBulk(
+    eventId: string,
+    clientId: string,
+    data: BulkAddParticipantsDto,
+  ): Promise<{ added: number; waitlisted: number; skipped: number; errors: Array<{ index: number; reason: string }> }> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const event = await tx.event.findFirst({
+          where: { id: eventId, clientId },
+          include: {
+            participants: { where: { status: { in: ['REGISTERED', 'CONFIRMED'] } } },
+          },
+        });
+        if (!event) throw new NotFoundException('Event not found');
+
+        const result = { added: 0, waitlisted: 0, skipped: 0, errors: [] as Array<{ index: number; reason: string }> };
+        let activeCount = event.participants.length;
+
+        for (let i = 0; i < data.participants.length; i++) {
+          const p = data.participants[i];
+          try {
+            if (p.type === 'EXTERNAL' && p.externalId && p.externalSource) {
+              const exists = await tx.participant.findUnique({
+                where: {
+                  eventId_externalId_externalSource: {
+                    eventId,
+                    externalId: p.externalId,
+                    externalSource: p.externalSource,
+                  },
+                },
+              });
+              if (exists) {
+                if (data.skipDuplicates) { result.skipped++; continue; }
+                result.errors.push({ index: i, reason: 'Already registered' });
+                continue;
+              }
+            }
+
+            const status: 'REGISTERED' | 'WAITLIST' =
+              event.maxParticipants && activeCount >= event.maxParticipants
+                ? 'WAITLIST'
+                : 'REGISTERED';
+
+            await tx.participant.create({
+              data: {
+                eventId,
+                type: p.type ?? 'INLINE',
+                userName: p.userName,
+                email: p.email,
+                externalId: p.externalId,
+                externalSource: p.externalSource,
+                status,
+                role: p.role ?? 'ATTENDEE',
+                notes: p.notes,
+                metadata: p.metadata,
+              },
+            });
+
+            if (status === 'REGISTERED') { result.added++; activeCount++; }
+            else { result.waitlisted++; }
+          } catch (error: any) {
+            if (error.code === 'P2002') {
+              if (data.skipDuplicates) { result.skipped++; }
+              else { result.errors.push({ index: i, reason: 'Already registered' }); }
+            } else {
+              result.errors.push({ index: i, reason: error.message ?? 'Unknown error' });
+            }
+          }
+        }
+
+        return result;
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  async removeParticipant(eventId: string, clientId: string, participantId: string) {
+    await this.prisma.$transaction(
+      async (tx) => {
+        const event = await tx.event.findFirst({
+          where: { id: eventId, clientId },
+          select: { id: true, maxParticipants: true },
+        });
+        if (!event) throw new NotFoundException('Event not found');
+
+        const participant = await tx.participant.findFirst({
+          where: { id: participantId, eventId },
+        });
+        if (!participant) throw new NotFoundException('Participant not found');
+
+        await tx.participant.update({
+          where: { id: participantId },
+          data: { status: 'CANCELLED' },
+        });
+
+        if (event.maxParticipants) {
+          await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants);
+        }
+      },
+      { isolationLevel: 'Serializable' },
+    );
+
+    this.audit.write('participant.removed', { metadata: { eventId, clientId, participantId } });
   }
 
   async updateParticipantStatus(
@@ -259,37 +546,46 @@ export class EventService {
     clientId: string,
     status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED',
   ) {
-    const event = await this.prisma.event.findFirst({ where: { id: eventId, clientId } });
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, clientId },
+      select: { id: true, maxParticipants: true },
+    });
     if (!event) throw new NotFoundException('Event not found');
 
-    const result = await this.prisma.participant.update({
-      where: { id: participantId },
-      data: { status },
-    });
+    return this.prisma.$transaction(
+      async (tx) => {
+        const participant = await tx.participant.findFirst({
+          where: { id: participantId, eventId },
+        });
+        if (!participant) throw new NotFoundException('Participant not found');
 
-    if (status === 'CANCELLED' && event.maxParticipants) {
-      await this.promoteFromWaitlist(eventId);
-    }
+        const result = await tx.participant.update({
+          where: { id: participantId },
+          data: { status },
+        });
 
-    return result;
+        if (status === 'CANCELLED' && event.maxParticipants) {
+          await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants);
+        }
+
+        return result;
+      },
+      { isolationLevel: 'Serializable' },
+    );
   }
 
   async checkInParticipant(participantId: string, eventId: string, clientId: string) {
     const event = await this.prisma.event.findFirst({ where: { id: eventId, clientId } });
     if (!event) throw new NotFoundException('Event not found');
 
+    const participant = await this.prisma.participant.findFirst({
+      where: { id: participantId, eventId },
+    });
+    if (!participant) throw new NotFoundException('Participant not found');
+
     return this.prisma.participant.update({
       where: { id: participantId },
       data: { checkedIn: true, checkedInAt: new Date(), status: 'ATTENDED' },
-    });
-  }
-
-  async completeEvent(eventId: string, clientId: string) {
-    await this.getEventById(eventId, clientId);
-    return this.prisma.event.update({
-      where: { id: eventId },
-      data: { status: 'COMPLETED' },
-      include: EVENT_INCLUDE,
     });
   }
 
@@ -322,14 +618,24 @@ export class EventService {
     };
   }
 
-  private async promoteFromWaitlist(eventId: string) {
-    const first = await this.prisma.participant.findFirst({
+  private async promoteFromWaitlistTx(
+    tx: Prisma.TransactionClient,
+    eventId: string,
+    maxParticipants: number,
+  ) {
+    const active = await tx.participant.count({
+      where: { eventId, status: { in: ['REGISTERED', 'CONFIRMED'] } },
+    });
+
+    if (active >= maxParticipants) return;
+
+    const first = await tx.participant.findFirst({
       where: { eventId, status: 'WAITLIST' },
       orderBy: { createdAt: 'asc' },
     });
 
     if (first) {
-      await this.prisma.participant.update({
+      await tx.participant.update({
         where: { id: first.id },
         data: { status: 'REGISTERED' },
       });
@@ -354,11 +660,32 @@ export class EventService {
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async cleanupPastEvents() {
+    const cutoff = new Date();
+
+    await this.prisma.event.updateMany({
+      where: {
+        parentEventId: { not: null },
+        startTime: { lt: cutoff },
+        status: { in: ['DRAFT', 'PUBLISHED'] },
+      },
+      data: { status: 'COMPLETED' },
+    });
+
+    const retentionCutoff = new Date(cutoff.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
     await this.prisma.event.deleteMany({
       where: {
-        startTime: { lt: new Date() },
         parentEventId: { not: null },
+        startTime: { lt: retentionCutoff },
+        status: { in: ['COMPLETED', 'CANCELLED'] },
       },
+    });
+  }
+
+  @Cron(CronExpression.EVERY_HOUR)
+  async cleanupExpiredIdempotencyKeys() {
+    await this.prisma.idempotencyKey.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
     });
   }
 }

@@ -5,12 +5,14 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { ClientService } from './client.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { Public } from '@/decorators/public.decorator';
 
 @ApiTags('clients')
 @Controller('clients')
@@ -18,6 +20,7 @@ export class ClientController {
   constructor(private clientService: ClientService) {}
 
   @Post()
+  @Public()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create client — returns token' })
   async createClient(@Body() dto: CreateClientDto) {
@@ -25,6 +28,7 @@ export class ClientController {
   }
 
   @Get()
+  @Public()
   @ApiOperation({ summary: 'List all clients (token excluded)' })
   async getAllClients() {
     return this.clientService.getAllClients();
@@ -48,5 +52,19 @@ export class ClientController {
   @ApiOperation({ summary: 'Regenerate client API token' })
   async regenerateToken(@Param('id') id: string) {
     return this.clientService.regenerateToken(id);
+  }
+
+  @Post(':id/webhook-secret')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Regenerate webhook HMAC secret — use to verify X-Webhook-Signature header' })
+  async regenerateWebhookSecret(@Param('id') id: string) {
+    return this.clientService.regenerateWebhookSecret(id);
+  }
+
+  @Get(':id/webhook-deliveries')
+  @ApiOperation({ summary: 'List webhook delivery attempts for debugging' })
+  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'DELIVERED', 'FAILED'] })
+  async getWebhookDeliveries(@Param('id') id: string, @Query('status') status?: string) {
+    return this.clientService.getWebhookDeliveries(id, status);
   }
 }

@@ -6,19 +6,16 @@ import {
   Delete,
   Body,
   Param,
-  UseGuards,
   Request,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { TagService } from './tag.service';
-import { ClientAuthGuard } from '@/guards/client-auth.guard';
 import { CreateTagDto, UpdateTagDto } from './dto/tag.dto';
 
 @ApiTags('tags')
 @Controller('tags')
-@UseGuards(ClientAuthGuard)
 export class TagController {
   constructor(private tagService: TagService) {}
 
