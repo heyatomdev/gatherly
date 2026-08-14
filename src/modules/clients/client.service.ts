@@ -6,6 +6,7 @@ import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
 const CLIENT_SELECT_SAFE = {
   id: true,
   name: true,
+  tenantId: true,
   isActive: true,
   defaultLocale: true,
   emailActive: true,
@@ -23,6 +24,7 @@ export class ClientService {
       data: {
         name: dto.name,
         token: this.generateToken(),
+        tenantId: dto.tenantId,
         defaultLocale: dto.defaultLocale ?? 'it',
         emailActive: dto.emailActive ?? false,
         webhookUrl: dto.webhookUrl,

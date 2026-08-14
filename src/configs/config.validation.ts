@@ -69,6 +69,12 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   ADMIN_ACCEPTED_APP_SLUGS: string = 'gatherly';
+
+  // Comma-separated Bastion roles allowed on the admin API. Aligned with the
+  // console login check (ADMIN | SUPER_ADMIN); OWNER kept for local admins.
+  @IsOptional()
+  @IsString()
+  ADMIN_ACCEPTED_ROLES: string = 'ADMIN,OWNER,SUPER_ADMIN';
 }
 
 export function validate(config: Record<string, unknown>) {
