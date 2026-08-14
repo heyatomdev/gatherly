@@ -18,6 +18,8 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+graphify-out/
+
 # OS
 .DS_Store
 
@@ -49,3 +51,5 @@ storage/*
 /generated/prisma
 
 tsconfig.build.tsbuildinfo
+
+.claude/settings.json

@@ -22,12 +22,11 @@ export class ClientAuthGuard implements CanActivate {
       where: { token },
     });
 
-    if (!client) {
-      throw new UnauthorizedException('Token non valido');
+    if (!client || !client.isActive) {
+      throw new UnauthorizedException('Token non valido o revocato');
     }
 
     request.client = client;
     return true;
   }
 }
-

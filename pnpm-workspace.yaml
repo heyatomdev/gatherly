@@ -1,5 +1,7 @@
-onlyBuiltDependencies:
-  - '@nestjs/core'
-  - '@prisma/client'
-  - '@prisma/engines'
-  - prisma
+packages:
+  - '.'
+
+allowBuilds:
+  '@scarf/scarf': false
+  '@prisma/engines': true
+  prisma: true

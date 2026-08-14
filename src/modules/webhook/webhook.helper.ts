@@ -1,19 +1,32 @@
-/**
- * Webhook Helper Utilities
- *
- * Utility functions to prepare event and participant data for webhook notifications
- */
-
 import { Event, Participant } from '@prisma/client';
 
-/**
- * Transforms an Event entity into webhook payload format
- */
-export function formatEventForWebhook(event: Event & { category?: any }): any {
+type EventWithRelations = Event & {
+  translations?: { locale: string; title: string; description?: string | null }[];
+  category?: { translations?: { locale: string; name: string }[] } | null;
+  tags?: { tag: { slug: string } }[];
+};
+
+type ParticipantWithEvent = Participant & {
+  event?: { translations?: { locale: string; title: string }[] } | null;
+};
+
+function pickTranslation<T extends { locale: string }>(
+  items: T[] | undefined,
+  locale: string,
+): T | undefined {
+  return items?.find((t) => t.locale === locale) ?? items?.[0];
+}
+
+export function formatEventForWebhook(event: EventWithRelations, locale?: string): any {
+  const l = locale ?? event.defaultLocale;
+  const translation = pickTranslation(event.translations, l);
+  const categoryName = pickTranslation(event.category?.translations ?? [], l)?.name;
+
   return {
     id: event.id,
-    title: event.title,
-    description: event.description,
+    title: translation?.title ?? '',
+    description: translation?.description,
+    locale: l,
     authorId: event.authorId,
     authorName: event.authorName,
     authorEmail: event.authorEmail,
@@ -23,9 +36,9 @@ export function formatEventForWebhook(event: Event & { category?: any }): any {
     status: event.status,
     type: event.type,
     coverImageUrl: event.coverImageUrl,
-    tags: event.tags,
+    tags: event.tags?.map((et) => et.tag.slug) ?? [],
     categoryId: event.categoryId,
-    category: event.category?.name,
+    categoryName,
     locationName: event.locationName,
     locationAddress: event.locationAddress,
     locationUrl: event.locationUrl,
@@ -34,25 +47,24 @@ export function formatEventForWebhook(event: Event & { category?: any }): any {
     isPublic: event.isPublic,
     price: event.price,
     currency: event.currency,
-    isRecurring: event.isRecurring,
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
   };
 }
 
-/**
- * Transforms a Participant entity into webhook payload format
- */
-export function formatParticipantForWebhook(
-  participant: Participant & { event?: { title: string } }
-): any {
+export function formatParticipantForWebhook(participant: ParticipantWithEvent, locale?: string): any {
+  const l = locale ?? 'it';
+  const eventTitle = pickTranslation(participant.event?.translations ?? [], l)?.title ?? 'Unknown Event';
+
   return {
     id: participant.id,
     eventId: participant.eventId,
-    eventTitle: participant.event?.title || 'Unknown Event',
-    userId: participant.userId,
+    eventTitle,
+    type: participant.type,
     userName: participant.userName,
     email: participant.email,
+    externalId: participant.externalId,
+    externalSource: participant.externalSource,
     status: participant.status,
     role: participant.role,
     notes: participant.notes,
@@ -62,26 +74,14 @@ export function formatParticipantForWebhook(
   };
 }
 
-/**
- * Prepares event data with additional metadata
- */
-export function enrichEventData(event: Event, additionalData?: Record<string, any>) {
-  return {
-    ...formatEventForWebhook(event),
-    ...additionalData,
-  };
+export function enrichEventData(event: EventWithRelations, locale?: string, additionalData?: Record<string, any>) {
+  return { ...formatEventForWebhook(event, locale), ...additionalData };
 }
 
-/**
- * Prepares participant data with additional metadata
- */
 export function enrichParticipantData(
-  participant: Participant & { event?: { title: string } },
-  additionalData?: Record<string, any>
+  participant: ParticipantWithEvent,
+  locale?: string,
+  additionalData?: Record<string, any>,
 ) {
-  return {
-    ...formatParticipantForWebhook(participant),
-    ...additionalData,
-  };
+  return { ...formatParticipantForWebhook(participant, locale), ...additionalData };
 }
-
