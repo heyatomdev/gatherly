@@ -9,11 +9,10 @@ import { ConfigService } from '@nestjs/config';
 import { BastionJwksService } from '../bastion-jwks.service';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 
-const ADMIN_ROLES = ['ADMIN', 'OWNER'];
-
 @Injectable()
 export class BastionUserGuard implements CanActivate {
   private readonly acceptedAppSlugs: string[];
+  private readonly acceptedRoles: string[];
 
   constructor(
     private readonly jwks: BastionJwksService,
@@ -21,6 +20,11 @@ export class BastionUserGuard implements CanActivate {
     private readonly config: ConfigService,
   ) {
     this.acceptedAppSlugs = (this.config.get<string>('ADMIN_ACCEPTED_APP_SLUGS') ?? 'gatherly')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    // Aligned with the console's login role check (ADMIN | SUPER_ADMIN); OWNER kept too.
+    this.acceptedRoles = (this.config.get<string>('ADMIN_ACCEPTED_ROLES') ?? 'ADMIN,OWNER,SUPER_ADMIN')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -43,7 +47,7 @@ export class BastionUserGuard implements CanActivate {
     if (!this.acceptedAppSlugs.includes(payload.appSlug)) {
       throw new ForbiddenException('App non autorizzata');
     }
-    if (!ADMIN_ROLES.includes(payload.role ?? '')) {
+    if (!this.acceptedRoles.includes(payload.role ?? '')) {
       throw new ForbiddenException('Ruolo insufficiente');
     }
 

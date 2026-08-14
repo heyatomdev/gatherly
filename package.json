@@ -1,6 +1,6 @@
 {
   "name": "gatherly",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Multi-tenant event management system with NestJS and Prisma",
   "scripts": {
     "build": "nest build",

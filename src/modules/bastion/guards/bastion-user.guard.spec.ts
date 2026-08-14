@@ -7,7 +7,15 @@ import { PrismaService } from '@/modules/prisma/prisma.service';
 
 const mockJwks = { verify: jest.fn() };
 const mockPrisma = { client: { findUnique: jest.fn() } };
-const mockConfig = { get: jest.fn().mockReturnValue('gatherly,meridian') };
+const mockConfig = {
+  get: jest.fn((key: string) =>
+    key === 'ADMIN_ACCEPTED_APP_SLUGS'
+      ? 'gatherly,meridian'
+      : key === 'ADMIN_ACCEPTED_ROLES'
+        ? 'ADMIN,OWNER,SUPER_ADMIN'
+        : undefined,
+  ),
+};
 
 function makeCtx(headers: Record<string, string> = {}): ExecutionContext {
   const req = { headers, adminUser: undefined, adminClient: undefined };
@@ -117,6 +125,14 @@ describe('BastionUserGuard', () => {
 
   it('passes for OWNER role', async () => {
     mockJwks.verify.mockResolvedValue({ ...validPayload, role: 'OWNER' });
+    mockPrisma.client.findUnique.mockResolvedValue(activeClient);
+    const ctx = makeCtx({ authorization: 'Bearer tok' });
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  it('passes for SUPER_ADMIN role', async () => {
+    mockJwks.verify.mockResolvedValue({ ...validPayload, role: 'SUPER_ADMIN' });
     mockPrisma.client.findUnique.mockResolvedValue(activeClient);
     const ctx = makeCtx({ authorization: 'Bearer tok' });
 
