@@ -52,11 +52,11 @@ export class AdminAnalyticsService {
           no_show_rate: number | null;
         }>>`
           SELECT
-            AVG(CASE WHEN e."maxParticipants" IS NOT NULL AND e."maxParticipants" > 0
-              THEN confirmed_count::float / e."maxParticipants" ELSE NULL END) AS avg_fill_rate,
+            AVG(CASE WHEN "maxParticipants" IS NOT NULL AND "maxParticipants" > 0
+              THEN confirmed_count::float / "maxParticipants" ELSE NULL END) AS avg_fill_rate,
             SUM(checked_in_count)::float / NULLIF(SUM(active_count), 0) AS checkin_rate,
-            1 - SUM(CASE WHEN e.status = 'COMPLETED' THEN checked_in_count ELSE 0 END)::float
-              / NULLIF(SUM(CASE WHEN e.status = 'COMPLETED' THEN active_count ELSE 0 END), 0) AS no_show_rate
+            1 - SUM(CASE WHEN status = 'COMPLETED' THEN checked_in_count ELSE 0 END)::float
+              / NULLIF(SUM(CASE WHEN status = 'COMPLETED' THEN active_count ELSE 0 END), 0) AS no_show_rate
           FROM (
             SELECT
               e.id,
