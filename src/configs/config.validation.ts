@@ -75,6 +75,14 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   ADMIN_ACCEPTED_ROLES: string = 'ADMIN,OWNER,SUPER_ADMIN';
+
+  @IsOptional()
+  @IsNumber()
+  VIP_THRESHOLD: number = 5;
+
+  @IsOptional()
+  @IsNumber()
+  AT_RISK_DAYS: number = 120;
 }
 
 export function validate(config: Record<string, unknown>) {

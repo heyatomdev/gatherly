@@ -8,10 +8,11 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { TagService } from '@/modules/tags/tag.service';
@@ -25,8 +26,9 @@ export class AdminTagsController {
   constructor(private readonly tags: TagService) {}
 
   @Get()
-  list(@Request() req) {
-    return this.tags.getTagsByClient(req.adminClient.id);
+  @ApiQuery({ name: 'withUsage', required: false, type: Boolean, description: 'Include event count and orphan flag per tag' })
+  list(@Request() req, @Query('withUsage') withUsage?: string) {
+    return this.tags.getTagsByClient(req.adminClient.id, withUsage === 'true');
   }
 
   @Get(':id')

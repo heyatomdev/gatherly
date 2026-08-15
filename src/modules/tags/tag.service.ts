@@ -21,10 +21,11 @@ export class TagService {
     }
   }
 
-  async getTagsByClient(clientId: string) {
+  async getTagsByClient(clientId: string, withUsage = false) {
     return this.prisma.tag.findMany({
       where: { clientId },
       orderBy: { slug: 'asc' },
+      ...(withUsage ? { include: { _count: { select: { events: true } } } } : {}),
     });
   }
 
