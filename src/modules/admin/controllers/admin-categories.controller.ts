@@ -8,10 +8,11 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { CategoryService } from '@/modules/categories/category.service';
@@ -25,7 +26,8 @@ export class AdminCategoriesController {
   constructor(private readonly categories: CategoryService) {}
 
   @Get()
-  list(@Request() req) {
+  @ApiQuery({ name: 'withUsage', required: false, type: Boolean, description: 'Include event count per category' })
+  list(@Request() req, @Query('withUsage') _withUsage?: string) {
     return this.categories.getCategoriesByClient(req.adminClient.id);
   }
 

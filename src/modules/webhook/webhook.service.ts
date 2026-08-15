@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHmac } from 'crypto';
@@ -106,6 +106,20 @@ export class WebhookService {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     await this.prisma.webhookDelivery.deleteMany({
       where: { status: 'DELIVERED', updatedAt: { lt: cutoff } },
+    });
+  }
+
+  async retryDelivery(deliveryId: string, clientId: string): Promise<void> {
+    const delivery = await this.prisma.webhookDelivery.findFirst({
+      where: { id: deliveryId, clientId },
+    });
+    if (!delivery) throw new NotFoundException('Webhook delivery not found');
+    if (delivery.status !== 'FAILED') {
+      throw new BadRequestException('Only FAILED deliveries can be retried');
+    }
+    await this.prisma.webhookDelivery.update({
+      where: { id: deliveryId },
+      data: { status: 'PENDING', attempts: 0, nextRetryAt: new Date(), lastError: null },
     });
   }
 

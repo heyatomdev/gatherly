@@ -128,6 +128,7 @@ model Event {
   tags         EventTag[]
 
   @@index([clientId])
+  @@index([clientId, startTime])
   @@index([categoryId])
   @@index([parentEventId])
   @@index([status])
@@ -211,6 +212,7 @@ model Participant {
   @@unique([eventId, externalId, externalSource])
   @@index([eventId])
   @@index([externalId])
+  @@index([email])
   @@index([status])
   @@map("participants")
 }
