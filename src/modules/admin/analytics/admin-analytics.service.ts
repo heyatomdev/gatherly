@@ -2,7 +2,13 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/modules/prisma/prisma.service';
+import { getAppVersion } from '@/common/app-version';
 import { BreakdownBy, TimeseriesMetric } from './dto/analytics-query.dto';
+
+/** Length of the forward-looking series behind the `upcoming` figure. Two weeks
+ *  is enough shape for a sparkline without turning a quiet calendar into a flat
+ *  line of zeroes. */
+const UPCOMING_TREND_DAYS = 14;
 
 @Injectable()
 export class AdminAnalyticsService {
@@ -25,76 +31,104 @@ export class AdminAnalyticsService {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [byStatus, upcomingCount, participantStats, rateStats, soldOutRows, staleDrafts, pastNotCompleted] =
-      await Promise.all([
-        this.prisma.event.groupBy({
-          by: ['status'],
-          where: { clientId, ...timeFilter },
-          _count: true,
-        }),
-        this.prisma.event.count({
-          where: { clientId, status: 'PUBLISHED', startTime: { gt: now }, ...timeFilter },
-        }),
-        this.prisma.$queryRaw<Array<{ total: number; active: number; checked_in: number }>>`
+    const upcomingWindowStart = new Date(now);
+    upcomingWindowStart.setUTCHours(0, 0, 0, 0);
+    const upcomingWindowEnd = new Date(
+      upcomingWindowStart.getTime() + UPCOMING_TREND_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    const [
+      byStatus,
+      upcomingCount,
+      upcomingDailyRows,
+      participantStats,
+      rateStats,
+      soldOutRows,
+      staleDrafts,
+      pastNotCompleted,
+    ] = await Promise.all([
+      this.prisma.event.groupBy({
+        by: ['status'],
+        where: { clientId, ...timeFilter },
+        _count: true,
+      }),
+      this.prisma.event.count({
+        where: { clientId, status: 'PUBLISHED', startTime: { gt: now }, ...timeFilter },
+      }),
+      // Forward-looking, and deliberately NOT narrowed by `from`/`to`: the
+      // window is "the next N days", not the slice the caller is inspecting.
+      // Pairing it with a `from`/`to` filter would draw a series that stops
+      // before the figure it sits under does.
+      this.prisma.$queryRaw<Array<{ bucket: Date; value: number }>>`
+        SELECT date_trunc('day', e."startTime") AS bucket, count(*)::int AS value
+        FROM events e
+        WHERE e."clientId" = ${clientId}
+          AND e.status = 'PUBLISHED'
+          AND e."startTime" >= ${upcomingWindowStart}
+          AND e."startTime" < ${upcomingWindowEnd}
+        GROUP BY 1
+        ORDER BY 1
+      `,
+      this.prisma.$queryRaw<Array<{ total: number; active: number; checked_in: number }>>`
+        SELECT
+          count(*)::int AS total,
+          count(*) FILTER (WHERE p.status != 'CANCELLED')::int AS active,
+          count(*) FILTER (WHERE p."checkedIn")::int AS checked_in
+        FROM participants p
+        JOIN events e ON e.id = p."eventId"
+        WHERE e."clientId" = ${clientId}
+        ${fromClause}
+        ${toClause}
+      `,
+      this.prisma.$queryRaw<Array<{
+        avg_fill_rate: number | null;
+        checkin_rate: number | null;
+        no_show_rate: number | null;
+      }>>`
+        SELECT
+          AVG(CASE WHEN "maxParticipants" IS NOT NULL AND "maxParticipants" > 0
+            THEN confirmed_count::float / "maxParticipants" ELSE NULL END) AS avg_fill_rate,
+          SUM(checked_in_count)::float / NULLIF(SUM(active_count), 0) AS checkin_rate,
+          1 - SUM(CASE WHEN status = 'COMPLETED' THEN checked_in_count ELSE 0 END)::float
+            / NULLIF(SUM(CASE WHEN status = 'COMPLETED' THEN active_count ELSE 0 END), 0) AS no_show_rate
+        FROM (
           SELECT
-            count(*)::int AS total,
-            count(*) FILTER (WHERE p.status != 'CANCELLED')::int AS active,
-            count(*) FILTER (WHERE p."checkedIn")::int AS checked_in
-          FROM participants p
-          JOIN events e ON e.id = p."eventId"
+            e.id,
+            e."maxParticipants",
+            e.status,
+            count(*) FILTER (WHERE p.status IN ('CONFIRMED', 'ATTENDED'))::int AS confirmed_count,
+            count(*) FILTER (WHERE p.status NOT IN ('CANCELLED', 'WAITLIST'))::int AS active_count,
+            count(*) FILTER (WHERE p."checkedIn")::int AS checked_in_count
+          FROM events e
+          LEFT JOIN participants p ON p."eventId" = e.id
           WHERE e."clientId" = ${clientId}
           ${fromClause}
           ${toClause}
-        `,
-        this.prisma.$queryRaw<Array<{
-          avg_fill_rate: number | null;
-          checkin_rate: number | null;
-          no_show_rate: number | null;
-        }>>`
-          SELECT
-            AVG(CASE WHEN "maxParticipants" IS NOT NULL AND "maxParticipants" > 0
-              THEN confirmed_count::float / "maxParticipants" ELSE NULL END) AS avg_fill_rate,
-            SUM(checked_in_count)::float / NULLIF(SUM(active_count), 0) AS checkin_rate,
-            1 - SUM(CASE WHEN status = 'COMPLETED' THEN checked_in_count ELSE 0 END)::float
-              / NULLIF(SUM(CASE WHEN status = 'COMPLETED' THEN active_count ELSE 0 END), 0) AS no_show_rate
-          FROM (
-            SELECT
-              e.id,
-              e."maxParticipants",
-              e.status,
-              count(*) FILTER (WHERE p.status IN ('CONFIRMED', 'ATTENDED'))::int AS confirmed_count,
-              count(*) FILTER (WHERE p.status NOT IN ('CANCELLED', 'WAITLIST'))::int AS active_count,
-              count(*) FILTER (WHERE p."checkedIn")::int AS checked_in_count
-            FROM events e
-            LEFT JOIN participants p ON p."eventId" = e.id
-            WHERE e."clientId" = ${clientId}
-            ${fromClause}
-            ${toClause}
-            GROUP BY e.id, e."maxParticipants", e.status
-          ) sub
-        `,
-        this.prisma.$queryRaw<Array<{ count: number }>>`
-          SELECT count(*)::int AS count
-          FROM events e
-          WHERE e."clientId" = ${clientId}
-            AND e.status = 'PUBLISHED'
-            AND e."maxParticipants" IS NOT NULL
-            AND (
-              SELECT count(*) FROM participants p
-              WHERE p."eventId" = e.id AND p.status IN ('CONFIRMED', 'ATTENDED')
-            ) >= e."maxParticipants"
-            AND (
-              SELECT count(*) FROM participants p
-              WHERE p."eventId" = e.id AND p.status = 'WAITLIST'
-            ) > 0
-        `,
-        this.prisma.event.count({
-          where: { clientId, status: 'DRAFT', createdAt: { lt: thirtyDaysAgo } },
-        }),
-        this.prisma.event.count({
-          where: { clientId, status: 'PUBLISHED', startTime: { lt: now } },
-        }),
-      ]);
+          GROUP BY e.id, e."maxParticipants", e.status
+        ) sub
+      `,
+      this.prisma.$queryRaw<Array<{ count: number }>>`
+        SELECT count(*)::int AS count
+        FROM events e
+        WHERE e."clientId" = ${clientId}
+          AND e.status = 'PUBLISHED'
+          AND e."maxParticipants" IS NOT NULL
+          AND (
+            SELECT count(*) FROM participants p
+            WHERE p."eventId" = e.id AND p.status IN ('CONFIRMED', 'ATTENDED')
+          ) >= e."maxParticipants"
+          AND (
+            SELECT count(*) FROM participants p
+            WHERE p."eventId" = e.id AND p.status = 'WAITLIST'
+          ) > 0
+      `,
+      this.prisma.event.count({
+        where: { clientId, status: 'DRAFT', createdAt: { lt: thirtyDaysAgo } },
+      }),
+      this.prisma.event.count({
+        where: { clientId, status: 'PUBLISHED', startTime: { lt: now } },
+      }),
+    ]);
 
     const statusMap: Record<string, number> = {};
     for (const s of byStatus) statusMap[s.status] = s._count;
@@ -125,6 +159,14 @@ export class AdminAnalyticsService {
         staleDrafts,
         pastNotCompleted,
       },
+      trends: {
+        upcoming: fillDailySeries(
+          upcomingWindowStart,
+          UPCOMING_TREND_DAYS,
+          upcomingDailyRows,
+        ),
+      },
+      version: getAppVersion(),
     };
   }
 
@@ -270,4 +312,27 @@ export class AdminAnalyticsService {
 
     return { granularity: trunc, cohorts };
   }
+}
+
+/**
+ * Zero-fills the days no event falls on, so the series always carries one point
+ * per day. A series built from the returned rows alone would compress an empty
+ * week into a single step and draw a slope that never happened.
+ */
+function fillDailySeries(
+  start: Date,
+  days: number,
+  rows: Array<{ bucket: Date; value: number }>,
+): Array<{ bucket: string; value: number }> {
+  const byDay = new Map<string, number>();
+  for (const row of rows) {
+    byDay.set(new Date(row.bucket).toISOString().slice(0, 10), row.value);
+  }
+
+  return Array.from({ length: days }, (_, i) => {
+    const day = new Date(start.getTime() + i * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    return { bucket: day, value: byDay.get(day) ?? 0 };
+  });
 }

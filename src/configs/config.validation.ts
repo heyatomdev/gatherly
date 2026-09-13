@@ -61,7 +61,7 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsNumber()
-  BASTION_JWKS_TTL_MS: number = 3_600_000;
+  BASTION_JWKS_TTL_MS: number = 300_000;
 
   // Comma-separated appSlug allowlist accepted by the admin API (Bastion user-JWT).
   // Includes the central console app (e.g. `meridian`) since refresh tokens are app-bound
