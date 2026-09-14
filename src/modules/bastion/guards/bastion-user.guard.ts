@@ -23,8 +23,9 @@ export class BastionUserGuard implements CanActivate {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    // Aligned with the console's login role check (ADMIN | SUPER_ADMIN); OWNER kept too.
-    this.acceptedRoles = (this.config.get<string>('ADMIN_ACCEPTED_ROLES') ?? 'ADMIN,OWNER,SUPER_ADMIN')
+    // Aligned with the console's login role check (ADMIN | SUPER_ADMIN | MODERATOR); OWNER kept too.
+    // Fine-grained permissions are enforced by Meridian's BFF.
+    this.acceptedRoles = (this.config.get<string>('ADMIN_ACCEPTED_ROLES') ?? 'ADMIN,OWNER,SUPER_ADMIN,MODERATOR')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
