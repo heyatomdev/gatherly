@@ -70,12 +70,13 @@ class EnvironmentVariables {
   @IsString()
   ADMIN_ACCEPTED_APP_SLUGS: string = 'gatherly';
 
-  // Comma-separated Bastion roles allowed on the admin API. Aligned with the
-  // console login check (ADMIN | SUPER_ADMIN | MODERATOR); OWNER kept for local admins.
+  // Comma-separated Bastion roles allowed on the admin API. This list must include
+  // every Meridian console role (currently SUPER_ADMIN, ADMIN, MODERATOR, AUTHOR;
+  // OWNER kept for local admins) — adding a role in Bastion requires adding it here too.
   // Fine-grained permissions are enforced by Meridian's BFF, not here.
   @IsOptional()
   @IsString()
-  ADMIN_ACCEPTED_ROLES: string = 'ADMIN,OWNER,SUPER_ADMIN,MODERATOR';
+  ADMIN_ACCEPTED_ROLES: string = 'ADMIN,OWNER,SUPER_ADMIN,MODERATOR,AUTHOR';
 
   @IsOptional()
   @IsNumber()

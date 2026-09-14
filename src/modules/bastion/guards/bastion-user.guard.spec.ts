@@ -12,7 +12,7 @@ const mockConfig = {
     key === 'ADMIN_ACCEPTED_APP_SLUGS'
       ? 'gatherly,meridian'
       : key === 'ADMIN_ACCEPTED_ROLES'
-        ? 'ADMIN,OWNER,SUPER_ADMIN,MODERATOR'
+        ? 'ADMIN,OWNER,SUPER_ADMIN,MODERATOR,AUTHOR'
         : undefined,
   ),
 };
@@ -141,6 +141,14 @@ describe('BastionUserGuard', () => {
 
   it('passes for MODERATOR role', async () => {
     mockJwks.verify.mockResolvedValue({ ...validPayload, role: 'MODERATOR' });
+    mockPrisma.client.findUnique.mockResolvedValue(activeClient);
+    const ctx = makeCtx({ authorization: 'Bearer tok' });
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  it('passes for AUTHOR role', async () => {
+    mockJwks.verify.mockResolvedValue({ ...validPayload, role: 'AUTHOR' });
     mockPrisma.client.findUnique.mockResolvedValue(activeClient);
     const ctx = makeCtx({ authorization: 'Bearer tok' });
 
