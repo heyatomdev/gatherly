@@ -73,11 +73,14 @@ src/
   modules/
     prisma/                  # @Global PrismaService
     app/                     # root module, status endpoint
-    clients/                 # Client CRUD + token management
+    clients/                 # ClientService only — no controller, no self-service (see below)
     categories/              # EventCategory CRUD (i18n)
     events/                  # Event CRUD + participants + recurrence
     tags/                    # Tag CRUD (client-scoped)
     webhook/                 # WebhookService + helper formatters
+    admin/
+      controllers/
+        admin-clients.controller.ts  # /admin/clients — SUPER_ADMIN only, see below
 ```
 
 **PrismaModule** is `@Global()` — never add `PrismaService` to `providers[]` in other modules.
@@ -94,6 +97,42 @@ All routes except `POST /clients` and `GET /clients` require `X-Client-Token` he
 3. `client.isActive === true` (revoked clients fail)
 
 Token attached to `req.client` — access in controllers via `@Request() req`.
+
+### Client management — no longer self-service
+
+There used to be a public `ClientController` at `/clients` (`POST`/`GET` were
+`@Public()`, the rest sat only behind the global `BastionJwtGuard`, which
+checks signature + "token's tenant has an active client" but nothing about
+role or which client id is being touched). That meant anyone could mint a
+client bound to any Bastion `tenantId` and read its token, or any tenant's
+token could modify/revoke/regenerate another tenant's client. It's gone.
+
+Client CRUD now lives at `/admin/clients`, gated by `BastionSuperAdminGuard`
+(`src/modules/bastion/guards/bastion-super-admin.guard.ts`) — SUPER_ADMIN
+role only, no tenant/client lookup (deliberately: the first client on an
+empty DB could never be created otherwise, and a SUPER_ADMIN manages clients
+across tenants, not just their own). Created from Meridian → Gatherly →
+Clients. No external app creates clients directly. `ClientModule` now only
+exports `ClientService` — no controller, no routes of its own.
+
+`ClientService` is still used by the per-tenant self-service admin routes
+(`admin-settings.controller.ts`, `admin-webhooks.controller.ts`), which stay
+behind `BastionUserGuard` and act on `req.adminClient` (the client bound to
+the caller's own tenant) — that's a different guard and a different set of
+routes from `/admin/clients`.
+
+### ⚠️ `/admin/*` bypasses the global guard — every admin controller must gate itself
+
+The global `BastionJwtGuard` (`src/modules/bastion/guards/bastion-jwt.guard.ts`,
+registered as `APP_GUARD`) returns `true` for **every** path starting with
+`/admin`, no exceptions — auth for the whole admin surface is deferred to
+per-controller `@UseGuards(...)`. A new controller under `AdminModule` (or
+any new controller mounted at `/admin/...`) that forgets its own guard is
+**fully public**, no auth at all. Every admin controller today puts
+`BastionUserGuard` (per-tenant) or `BastionSuperAdminGuard` (SUPER_ADMIN,
+cross-tenant — currently only `admin-clients.controller.ts`) plus
+`AdminThrottlerGuard` on the class. Adding the guard is part of the PR that
+adds the controller, not a follow-up.
 
 ---
 
@@ -196,15 +235,23 @@ Upserts by `(eventId, locale)` — existing locale is updated, new locale is cre
 
 ## API Endpoints
 
-### Clients (no auth required)
+### Clients — `/admin/clients` (SUPER_ADMIN only, Bastion user JWT)
+
+No more public `/clients` — see "Client management — no longer self-service" above.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/clients` | Create client — returns token |
-| `GET` | `/clients` | List all (token excluded) |
-| `PATCH` | `/clients/:id` | Update name/locale/emailActive/webhookUrl |
-| `POST` | `/clients/:id/revoke` | Revoke — blocks all API calls |
-| `POST` | `/clients/:id/token` | Regenerate token |
+| `GET` | `/admin/clients` | List all (token, webhookSecret excluded) |
+| `POST` | `/admin/clients` | Create client — returns token once |
+| `PATCH` | `/admin/clients/:id` | Update name/tenantId/locale/emailActive/webhookUrl |
+| `POST` | `/admin/clients/:id/revoke` | Revoke — blocks all API calls |
+| `POST` | `/admin/clients/:id/reactivate` | Reactivate a revoked client |
+| `POST` | `/admin/clients/:id/token` | Regenerate token |
+| `POST` | `/admin/clients/:id/webhook-secret` | Regenerate webhook HMAC secret |
+| `GET` | `/admin/clients/:id/webhook-deliveries?status=` | Webhook delivery attempts |
+
+`tenantId` is `@unique` on `Client` — a duplicate on create/update returns
+`409 Conflict`, not a 500.
 
 ### Categories (auth required)
 

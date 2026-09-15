@@ -11,6 +11,7 @@ import { AdminCategoriesController } from './controllers/admin-categories.contro
 import { AdminTagsController } from './controllers/admin-tags.controller';
 import { AdminWebhooksController } from './controllers/admin-webhooks.controller';
 import { AdminSettingsController } from './controllers/admin-settings.controller';
+import { AdminClientsController } from './controllers/admin-clients.controller';
 import { AdminAnalyticsController } from './analytics/admin-analytics.controller';
 import { AdminPeopleController } from './people/admin-people.controller';
 import { AdminAnalyticsService } from './analytics/admin-analytics.service';
@@ -26,6 +27,7 @@ import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
     AdminTagsController,
     AdminWebhooksController,
     AdminSettingsController,
+    AdminClientsController,
     AdminAnalyticsController,
     AdminPeopleController,
   ],
