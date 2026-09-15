@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
@@ -20,18 +20,25 @@ export class ClientService {
   constructor(private prisma: PrismaService) {}
 
   async createClient(dto: CreateClientDto) {
-    return this.prisma.client.create({
-      data: {
-        name: dto.name,
-        token: this.generateToken(),
-        tenantId: dto.tenantId,
-        defaultLocale: dto.defaultLocale ?? 'it',
-        emailActive: dto.emailActive ?? false,
-        webhookUrl: dto.webhookUrl,
-        webhookSecret: randomBytes(32).toString('hex'),
-      },
-      select: { ...CLIENT_SELECT_SAFE, token: true },
-    });
+    try {
+      return await this.prisma.client.create({
+        data: {
+          name: dto.name,
+          token: this.generateToken(),
+          tenantId: dto.tenantId,
+          defaultLocale: dto.defaultLocale ?? 'it',
+          emailActive: dto.emailActive ?? false,
+          webhookUrl: dto.webhookUrl,
+          webhookSecret: randomBytes(32).toString('hex'),
+        },
+        select: { ...CLIENT_SELECT_SAFE, token: true },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException('Tenant già associato a un altro client');
+      }
+      throw error;
+    }
   }
 
   async getAllClients() {
@@ -43,11 +50,18 @@ export class ClientService {
 
   async updateClient(id: string, dto: UpdateClientDto) {
     await this.findOrFail(id);
-    return this.prisma.client.update({
-      where: { id },
-      data: dto,
-      select: CLIENT_SELECT_SAFE,
-    });
+    try {
+      return await this.prisma.client.update({
+        where: { id },
+        data: dto,
+        select: CLIENT_SELECT_SAFE,
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException('Tenant già associato a un altro client');
+      }
+      throw error;
+    }
   }
 
   async revokeClient(id: string) {
@@ -55,6 +69,15 @@ export class ClientService {
     return this.prisma.client.update({
       where: { id },
       data: { isActive: false, revokedAt: new Date() },
+      select: CLIENT_SELECT_SAFE,
+    });
+  }
+
+  async reactivateClient(id: string) {
+    await this.findOrFail(id);
+    return this.prisma.client.update({
+      where: { id },
+      data: { isActive: true, revokedAt: null },
       select: CLIENT_SELECT_SAFE,
     });
   }

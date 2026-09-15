@@ -7,26 +7,24 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BastionJwksService } from '../bastion-jwks.service';
-import { PrismaService } from '@/modules/prisma/prisma.service';
 
+/**
+ * Gate for routes that manage Client records themselves (e.g. /admin/clients).
+ * Unlike BastionUserGuard, this guard does NOT look up a Client by the token's
+ * tenantId: on an empty DB the very first client could never be created if we
+ * required one to already exist, and a SUPER_ADMIN routinely manages clients
+ * belonging to tenants other than their own. Authorization here is strictly
+ * "is this a SUPER_ADMIN user token", nothing tenant-scoped.
+ */
 @Injectable()
-export class BastionUserGuard implements CanActivate {
+export class BastionSuperAdminGuard implements CanActivate {
   private readonly acceptedAppSlugs: string[];
-  private readonly acceptedRoles: string[];
 
   constructor(
     private readonly jwks: BastionJwksService,
-    private readonly prisma: PrismaService,
     private readonly config: ConfigService,
   ) {
     this.acceptedAppSlugs = (this.config.get<string>('ADMIN_ACCEPTED_APP_SLUGS') ?? 'gatherly')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    // This list must include every Meridian console role (currently SUPER_ADMIN, ADMIN,
-    // MODERATOR, AUTHOR; OWNER kept for local admins) — adding a role in Bastion requires adding it here too.
-    // Fine-grained permissions are enforced by Meridian's BFF.
-    this.acceptedRoles = (this.config.get<string>('ADMIN_ACCEPTED_ROLES') ?? 'ADMIN,OWNER,SUPER_ADMIN,MODERATOR,AUTHOR')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -40,24 +38,17 @@ export class BastionUserGuard implements CanActivate {
     const payload = await this.jwks.verify(auth.slice(7));
 
     // Bastion user JWTs carry no `type` field — only machine tokens set `type: 'service_client'`.
-    // Reject machine tokens; everything else is a user token.
     if (payload.type === 'service_client') {
       throw new UnauthorizedException('Token macchina non ammesso');
     }
-    // The console (e.g. `meridian`) forwards its own user-JWT; its appSlug is not `gatherly`.
-    // Accept any allowlisted app since app-bound refresh tokens cannot be exchanged cross-app.
     if (!this.acceptedAppSlugs.includes(payload.appSlug)) {
       throw new ForbiddenException('App non autorizzata');
     }
-    if (!this.acceptedRoles.includes(payload.role ?? '')) {
+    if (payload.role !== 'SUPER_ADMIN') {
       throw new ForbiddenException('Ruolo insufficiente');
     }
 
-    const client = await this.prisma.client.findUnique({ where: { tenantId: payload.tenantId } });
-    if (!client || !client.isActive) throw new ForbiddenException('Client non attivo per il tenant');
-
     req.adminUser = payload;
-    req.adminClient = client;
     return true;
   }
 }
