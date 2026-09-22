@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto';
 import { DateTime } from 'luxon';
 import { rrulestr } from 'rrule';
 import { PrismaService } from '../prisma/prisma.service';
-import { BastionAuditService } from '../bastion/bastion-audit.service';
+import { BastionAuditService } from '@heyatom/bastion-client/nest';
 import {
   CreateEventDto,
   UpdateEventDto,

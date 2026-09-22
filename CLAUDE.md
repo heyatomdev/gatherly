@@ -108,7 +108,8 @@ client bound to any Bastion `tenantId` and read its token, or any tenant's
 token could modify/revoke/regenerate another tenant's client. It's gone.
 
 Client CRUD now lives at `/admin/clients`, gated by `BastionSuperAdminGuard`
-(`src/modules/bastion/guards/bastion-super-admin.guard.ts`) — SUPER_ADMIN
+(`src/modules/bastion/guards/bastion-super-admin.guard.ts`, a subclass of the
+package's `BastionUserGuard` with `acceptedRoles` narrowed) — SUPER_ADMIN
 role only, no tenant/client lookup (deliberately: the first client on an
 empty DB could never be created otherwise, and a SUPER_ADMIN manages clients
 across tenants, not just their own). Created from Meridian → Gatherly →
@@ -121,10 +122,24 @@ behind `BastionUserGuard` and act on `req.adminClient` (the client bound to
 the caller's own tenant) — that's a different guard and a different set of
 routes from `/admin/clients`.
 
+### Bastion integration lives in `@heyatom/bastion-client` (since 2026-09-22)
+
+`BastionModule.forRootAsync` in `AppModule` (env: `BASTION_URL`, `BASTION_APP_SLUG`,
+`BASTION_CLIENT_API_KEY`, `BASTION_TENANT_SLUG`, `BASTION_JWKS_TTL_MS`,
+`ADMIN_ACCEPTED_APP_SLUGS`, `ADMIN_ACCEPTED_ROLES`) replaces the hand-copied
+`src/modules/bastion/` services. Import `BastionAuditService`, `@Public()`,
+`@RequireScope()`, `@CurrentClient()` and the payload types from
+`@heyatom/bastion-client/nest`. Only the three guards stay local, as thin
+subclasses: they add what is Gatherly's alone — the binding of the token's
+tenant to a local `Client` row (`req.client` on the machine surface,
+`req.adminClient` on `/admin`). A wrong-service machine token now answers 403,
+not 401 (package semantics: authenticated, wrong audience).
+
 ### ⚠️ `/admin/*` bypasses the global guard — every admin controller must gate itself
 
 The global `BastionJwtGuard` (`src/modules/bastion/guards/bastion-jwt.guard.ts`,
-registered as `APP_GUARD`) returns `true` for **every** path starting with
+registered as `APP_GUARD`, a subclass of `ServiceClientJwtGuard` from
+`@heyatom/bastion-client/nest` that adds the local `Client` lookup) returns `true` for **every** path starting with
 `/admin`, no exceptions — auth for the whole admin surface is deferred to
 per-controller `@UseGuards(...)`. A new controller under `AdminModule` (or
 any new controller mounted at `/admin/...`) that forgets its own guard is

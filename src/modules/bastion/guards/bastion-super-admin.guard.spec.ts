@@ -1,13 +1,8 @@
 import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { BastionSuperAdminGuard } from './bastion-super-admin.guard';
-import { BastionJwksService } from '../bastion-jwks.service';
-
+import { BastionJwksService, BASTION_OPTIONS, BastionAuditService } from '@heyatom/bastion-client/nest';
 const mockJwks = { verify: jest.fn() };
-const mockConfig = {
-  get: jest.fn((key: string) => (key === 'ADMIN_ACCEPTED_APP_SLUGS' ? 'gatherly,meridian' : undefined)),
-};
 
 function makeCtx(headers: Record<string, string> = {}): ExecutionContext {
   const req = { headers, adminUser: undefined };
@@ -36,7 +31,8 @@ describe('BastionSuperAdminGuard', () => {
       providers: [
         BastionSuperAdminGuard,
         { provide: BastionJwksService, useValue: mockJwks },
-        { provide: ConfigService, useValue: mockConfig },
+        { provide: BASTION_OPTIONS, useValue: { baseUrl: 'http://bastion', serviceSlug: 'gatherly', acceptedAppSlugs: ['gatherly', 'meridian'] } },
+        { provide: BastionAuditService, useValue: { write: jest.fn() } },
       ],
     }).compile();
 

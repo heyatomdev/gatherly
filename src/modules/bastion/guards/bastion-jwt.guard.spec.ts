@@ -1,16 +1,12 @@
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { BastionJwtGuard } from './bastion-jwt.guard';
-import { BastionJwksService } from '../bastion-jwks.service';
+import { BastionJwksService, BASTION_OPTIONS } from '@heyatom/bastion-client/nest';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 
 const mockJwks = { verify: jest.fn() };
 const mockPrisma = { client: { findUnique: jest.fn() } };
-const mockConfig = {
-  get: jest.fn((key: string) => (key === 'BASTION_APP_SLUG' ? 'gatherly' : undefined)),
-};
 const mockReflector = { getAllAndOverride: jest.fn().mockReturnValue(false) };
 
 function makeCtx(headers: Record<string, string> = {}, path = '/events'): ExecutionContext {
@@ -55,7 +51,7 @@ describe('BastionJwtGuard', () => {
         BastionJwtGuard,
         { provide: BastionJwksService, useValue: mockJwks },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ConfigService, useValue: mockConfig },
+        { provide: BASTION_OPTIONS, useValue: { baseUrl: 'http://bastion', serviceSlug: 'gatherly', acceptedAppSlugs: ['gatherly', 'meridian'] } },
         { provide: Reflector, useValue: mockReflector },
       ],
     }).compile();
@@ -92,7 +88,7 @@ describe('BastionJwtGuard', () => {
     mockPrisma.client.findUnique.mockResolvedValue(activeClient);
 
     await expect(guard.canActivate(makeCtx({ authorization: 'Bearer tok' }))).rejects.toThrow(
-      UnauthorizedException,
+      ForbiddenException,
     );
     expect(mockPrisma.client.findUnique).not.toHaveBeenCalled();
   });
@@ -102,7 +98,7 @@ describe('BastionJwtGuard', () => {
     mockJwks.verify.mockResolvedValue(noSlug);
 
     await expect(guard.canActivate(makeCtx({ authorization: 'Bearer tok' }))).rejects.toThrow(
-      UnauthorizedException,
+      ForbiddenException,
     );
   });
 
