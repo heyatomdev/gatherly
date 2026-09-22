@@ -2,8 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Test } from '@nestjs/testing';
 import { EventService } from './event.service';
 import { PrismaService } from '@/modules/prisma/prisma.service';
-import { BastionAuditService } from '@/modules/bastion/bastion-audit.service';
-
+import { BastionAuditService } from '@heyatom/bastion-client/nest';
 // ── mock tx used inside $transaction callbacks ──────────────────────────────
 const mockTx = {
   event: {

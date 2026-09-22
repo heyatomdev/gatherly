@@ -2,8 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService, PrismaHealthIndicator } from '@nestjs/terminus';
 import { PrismaService } from '../prisma/prisma.service';
-import { Public } from '@/decorators/public.decorator';
-
+import { Public } from '@heyatom/bastion-client/nest';
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
