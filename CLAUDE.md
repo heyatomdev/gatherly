@@ -333,7 +333,7 @@ Webhook failures are caught and logged — they never break the main operation.
 
 ## Metrics
 
-`GET /metrics` (Prometheus, `prom-client`) is served by `MetricsServer` (`src/modules/metrics/`) on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`).
+`GET /metrics` (Prometheus, `@prometheus-io/client`) is served by `MetricsServer` (`src/modules/metrics/`) on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`).
 
 - **Isolation is the network's job**: never publish 9091 from the container, nginx never proxies it. Prometheus scrapes `gatherly:9091` on the internal Docker network.
 - `MetricsMiddleware` (all routes, in `AppModule.configure`) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.
