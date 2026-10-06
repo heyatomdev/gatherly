@@ -9,6 +9,8 @@ import {EventModule} from "@/modules/events/event.module";
 import {CategoryModule} from "@/modules/categories/category.module";
 import {TagModule} from "@/modules/tags/tag.module";
 import { HealthModule } from '@/modules/health/health.module';
+import { MetricsModule } from '@/modules/metrics/metrics.module';
+import { MetricsMiddleware } from '@/modules/metrics/metrics.middleware';
 
 import { BastionJwtGuard } from '@/modules/bastion/guards/bastion-jwt.guard';
 import { BastionModule } from '@heyatom/bastion-client/nest';
@@ -79,6 +81,7 @@ import { APP_GUARD } from '@nestjs/core';
             }),
         }),
         HealthModule,
+        MetricsModule,
         ClientModule,
         EventModule,
         CategoryModule,
@@ -93,7 +96,9 @@ import { APP_GUARD } from '@nestjs/core';
 
 export class AppModule implements NestModule {
     configure(consumer: MiddlewareConsumer): void {
-        consumer.apply(RequestIdMiddleware).forRoutes('*');
+        // MetricsMiddleware is a middleware and not an APP_INTERCEPTOR on purpose:
+        // interceptors run after the guards, so 401s and 429s would never be counted.
+        consumer.apply(RequestIdMiddleware, MetricsMiddleware).forRoutes('*');
     }
 }
 

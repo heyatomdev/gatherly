@@ -39,6 +39,7 @@ pnpm start:dev           # watch mode
 | `NODE_ENV` | `development` | No |
 | `PORT` | `3000` | No |
 | `BASE_URL` | `http://localhost:3000` | No |
+| `METRICS_PORT` | `9091` | No |
 
 ### Docker
 
@@ -327,6 +328,15 @@ Webhook failures are caught and logged — they never break the main operation.
 - `RecurrenceRule` is unscoped (no `clientId`) — it's a pure config object.
 - `Tag.slug` is auto-lowercased at service level before DB write.
 - `EventTag` is an explicit junction model (not implicit many-to-many) — cannot use Prisma's `connect`/`set` shorthand. Use `deleteMany` + `createMany` to replace tags.
+
+---
+
+## Metrics
+
+`GET /metrics` (Prometheus, `prom-client`) is served by `MetricsServer` (`src/modules/metrics/`) on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`).
+
+- **Isolation is the network's job**: never publish 9091 from the container, nginx never proxies it. Prometheus scrapes `gatherly:9091` on the internal Docker network.
+- `MetricsMiddleware` (all routes, in `AppModule.configure`) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.
 
 ---
 

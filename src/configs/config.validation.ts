@@ -30,6 +30,11 @@ class EnvironmentVariables {
   @IsString()
   DATABASE_URL!: string;
 
+  // Prometheus /metrics listener — internal network only, never published or proxied.
+  @IsOptional()
+  @IsNumber()
+  METRICS_PORT: number = 9091;
+
   @IsOptional()
   @IsString()
   CORS_ORIGINS: string = 'http://localhost:3000';
