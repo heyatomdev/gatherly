@@ -61,6 +61,8 @@ export class MetricsService {
 
     // PENDING is the only non-terminal status: FAILED is final once
     // maxAttempts is reached (only a manual retry moves it back to PENDING).
+    // Rows claimed by WebhookService.claimDue() carry a lease (nextRetryAt in
+    // the future), so in-flight deliveries correctly don't count as overdue.
     const overdue = new Gauge({
       name: 'gatherly_webhook_deliveries_overdue',
       help: 'PENDING webhook deliveries past their nextRetryAt — the queue job runs every minute, so a value that stays non-zero means it is stuck',

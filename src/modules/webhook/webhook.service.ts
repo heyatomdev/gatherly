@@ -6,6 +6,15 @@ import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { WebhookEventType, EventWebhookPayload, ParticipantWebhookPayload } from './dto/webhook-event.dto';
 
+/** Rows claimed per queue tick — see `claimDue`. */
+export const QUEUE_BATCH_SIZE = 50;
+
+/**
+ * How long a claimed row stays invisible to other replicas. Must comfortably
+ * exceed the 10s HTTP timeout in `attempt()`.
+ */
+export const CLAIM_LEASE_MINUTES = 5;
+
 @Injectable()
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
@@ -38,16 +47,40 @@ export class WebhookService {
 
   @Cron('* * * * *')
   async processQueue(): Promise<void> {
-    const pending = await this.prisma.webhookDelivery.findMany({
-      where: {
-        status: 'PENDING',
-        nextRetryAt: { lte: new Date() },
-      },
-      take: 50,
-      orderBy: { nextRetryAt: 'asc' },
-    });
+    const due = await this.claimDue();
+    await Promise.allSettled(due.map((d) => this.attempt(d)));
+  }
 
-    await Promise.allSettled(pending.map((d) => this.attempt(d)));
+  /**
+   * Atomically claims up to QUEUE_BATCH_SIZE due rows by pushing their
+   * nextRetryAt forward by the lease. SKIP LOCKED lets concurrent replicas
+   * (or an overlapping tick) each take a disjoint batch; if the claiming
+   * worker dies mid-delivery the row becomes due again when the lease runs
+   * out. `attempt()` overwrites nextRetryAt / status either way, so the
+   * lease never leaks into the backoff schedule.
+   *
+   * `$queryRaw` because Prisma expresses neither `SKIP LOCKED` nor
+   * `UPDATE ... RETURNING` over a subquery. Columns aren't @map'ed, hence the
+   * quoted camelCase.
+   */
+  async claimDue() {
+    const claimed = await this.prisma.$queryRaw<{ id: string }[]>`
+      UPDATE webhook_deliveries
+         SET "nextRetryAt" = now() + make_interval(mins => ${CLAIM_LEASE_MINUTES})
+       WHERE id IN (
+         SELECT id FROM webhook_deliveries
+          WHERE status = 'PENDING' AND "nextRetryAt" <= now()
+          ORDER BY "nextRetryAt"
+          LIMIT ${QUEUE_BATCH_SIZE}
+          FOR UPDATE SKIP LOCKED
+       )
+       RETURNING id
+    `;
+    if (claimed.length === 0) return [];
+
+    return this.prisma.webhookDelivery.findMany({
+      where: { id: { in: claimed.map((row) => row.id) } },
+    });
   }
 
   private async attempt(delivery: any): Promise<void> {

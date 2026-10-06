@@ -319,6 +319,19 @@ Event types: `event.created`, `event.updated`, `event.cancelled`, `event.publish
 
 Webhook failures are caught and logged — they never break the main operation.
 
+Delivery is an outbox: `enqueue()` writes a `WebhookDelivery` row, the
+`processQueue` cron (every minute) sends it. Rows are **claimed** before
+sending by `claimDue()` — one `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE
+SKIP LOCKED) RETURNING id` that pushes `nextRetryAt` forward by
+`CLAIM_LEASE_MINUTES` (5). Multiple replicas or an overlapping tick each get
+a disjoint batch (50), so no delivery is sent twice; a worker that dies
+mid-send leaves the row to come back when the lease expires. `attempt()` then
+sets `DELIVERED`, or `PENDING` with backoff `2^attempts * 30s`, or `FAILED` at
+`maxAttempts`. Manual retry resets a `FAILED` row to `PENDING`, due now.
+Leased rows have `nextRetryAt` in the future, so they don't count toward
+`gatherly_webhook_deliveries_overdue` while in flight. Never read the queue
+with a plain `findMany` — that's how double sends happened.
+
 ---
 
 ## Prisma Notes
