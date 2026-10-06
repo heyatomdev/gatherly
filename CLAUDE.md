@@ -337,6 +337,9 @@ Webhook failures are caught and logged — they never break the main operation.
 
 - **Isolation is the network's job**: never publish 9091 from the container, nginx never proxies it. Prometheus scrapes `gatherly:9091` on the internal Docker network.
 - `MetricsMiddleware` (all routes, in `AppModule.configure`) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.
+- **`gatherly_webhook_deliveries{status}`** (gauge): `webhook_deliveries` rows per `WebhookDeliveryStatus` (`PENDING`/`DELIVERED`/`FAILED`), every value always emitted, 0 if absent. `DELIVERED` drops weekly (cleanup cron deletes old rows), so read trends, not absolutes.
+- **`gatherly_webhook_deliveries_overdue`** (gauge): `PENDING` rows with `nextRetryAt` in the past — the "queue is stuck" signal. `PENDING` is the only non-terminal status (`FAILED` is final after `maxAttempts`, back to `PENDING` only via manual retry). `WebhookService.processQueue` runs every minute (50 rows per tick), so short non-zero blips are normal. Suggested alert: `gatherly_webhook_deliveries_overdue > 0 for 15m`. Served by the `(status, nextRetryAt)` index.
+- Both gauges are computed lazily in `collect()` (no query until scraped); a DB error logs `warn` and keeps the previous value instead of failing the scrape.
 
 ---
 
