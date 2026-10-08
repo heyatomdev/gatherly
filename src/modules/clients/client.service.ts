@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { assertSafeWebhookUrl } from '../webhook/webhook-url';
 
 const CLIENT_SELECT_SAFE = {
   id: true,
@@ -20,6 +21,7 @@ export class ClientService {
   constructor(private prisma: PrismaService) {}
 
   async createClient(dto: CreateClientDto) {
+    if (dto.webhookUrl) await assertSafeWebhookUrl(dto.webhookUrl);
     try {
       return await this.prisma.client.create({
         data: {
@@ -48,8 +50,15 @@ export class ClientService {
     });
   }
 
+  async getClient(id: string) {
+    const client = await this.prisma.client.findUnique({ where: { id }, select: CLIENT_SELECT_SAFE });
+    if (!client) throw new NotFoundException(`Client ${id} not found`);
+    return client;
+  }
+
   async updateClient(id: string, dto: UpdateClientDto) {
     await this.findOrFail(id);
+    if (dto.webhookUrl) await assertSafeWebhookUrl(dto.webhookUrl);
     try {
       return await this.prisma.client.update({
         where: { id },

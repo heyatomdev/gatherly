@@ -73,7 +73,7 @@ describe('WebhookService queue', () => {
     await service.processQueue();
 
     const { data } = prisma.webhookDelivery.update.mock.calls[0][0];
-    expect(data).toMatchObject({ attempts: 2, status: 'PENDING', lastError: 'boom' });
+    expect(data).toMatchObject({ attempts: 2, status: 'PENDING', lastError: 'Delivery failed' });
     // 2^2 * 30s = 120s — well under the 5-minute lease
     expect(data.nextRetryAt.getTime() - before).toBeGreaterThanOrEqual(120_000);
     expect(data.nextRetryAt.getTime() - before).toBeLessThan(121_000);

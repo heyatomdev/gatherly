@@ -31,7 +31,8 @@ export class CreateClientDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(2048)
   webhookUrl?: string;
 }
 
@@ -60,6 +61,7 @@ export class UpdateClientDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(2048)
   webhookUrl?: string;
 }

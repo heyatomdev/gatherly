@@ -18,7 +18,8 @@ import { ClientService } from '@/modules/clients/client.service';
 export class UpdateSettingsDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(2048)
   webhookUrl?: string;
 
   @ApiPropertyOptional({ example: 'en' })
@@ -42,7 +43,8 @@ export class AdminSettingsController {
 
   @Get()
   getSettings(@Request() req) {
-    return req.adminClient;
+    // Never return req.adminClient as-is: it carries token + webhookSecret.
+    return this.clients.getClient(req.adminClient.id);
   }
 
   @Patch()
