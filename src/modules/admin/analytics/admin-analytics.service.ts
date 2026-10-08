@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 import { getAppVersion } from '@/common/app-version';
@@ -12,10 +11,7 @@ const UPCOMING_TREND_DAYS = 14;
 
 @Injectable()
 export class AdminAnalyticsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async tenantStats(clientId: string, from?: Date, to?: Date) {
     const timeFilter: any = {};

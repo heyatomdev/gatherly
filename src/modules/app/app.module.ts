@@ -50,7 +50,6 @@ import { APP_GUARD } from '@nestjs/core';
                     paths: [
                         'req.headers.authorization',
                         'req.headers.cookie',
-                        'req.headers["x-internal-secret"]',
                     ],
                     remove: true,
                 },

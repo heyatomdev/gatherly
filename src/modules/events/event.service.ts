@@ -22,7 +22,7 @@ import {
   GetParticipantsQueryDto,
   BulkAddParticipantsDto,
 } from './dto/event.dto';
-import { PageParams, PaginatedResult, paginate } from '@/common/pagination';
+import { PaginatedResult, paginate } from '@/common/pagination';
 
 /** Statuses that take a seat against maxParticipants. */
 const ACTIVE_STATUSES: ('REGISTERED' | 'CONFIRMED')[] = ['REGISTERED', 'CONFIRMED'];

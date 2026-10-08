@@ -25,7 +25,7 @@ class EnvironmentVariables {
   LOG_LEVEL: LogLevel = LogLevel.Info;
 
   @IsNumber()
-  PORT: number = 3001;
+  PORT: number = 3000;
 
   @IsString()
   DATABASE_URL!: string;
@@ -51,10 +51,6 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   CORS_ORIGINS: string = 'http://localhost:3000';
-
-  @IsOptional()
-  @IsString()
-  APP_BASE_URL?: string;
 
   @IsOptional()
   @IsNumber()
