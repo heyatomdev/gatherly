@@ -1,6 +1,3 @@
-IntelliJ IDEA
-PhpStorm
-WebStorm
 # compiled output
 /dist
 /node_modules
@@ -42,13 +39,6 @@ graphify-out/
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-
-# Storage - ignore all except defaults
-storage/*
-!/storage/defaults.fileharbor/
-!/storage/defaults.fileharbor/**
-
-/generated/prisma
 
 tsconfig.build.tsbuildinfo
 

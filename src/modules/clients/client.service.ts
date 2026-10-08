@@ -112,10 +112,6 @@ export class ClientService {
     });
   }
 
-  async getClientByToken(token: string) {
-    return this.prisma.client.findUnique({ where: { token } });
-  }
-
   private async findOrFail(id: string) {
     const client = await this.prisma.client.findUnique({ where: { id } });
     if (!client) throw new NotFoundException(`Client ${id} not found`);

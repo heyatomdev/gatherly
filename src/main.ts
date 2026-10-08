@@ -2,8 +2,8 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './modules/app/app.module';
 import { ValidationPipe } from "@nestjs/common";
+import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { TransformInterceptor } from './interceptors/transform.interceptor';
@@ -15,10 +15,12 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   app.use(helmet());
-  app.use(cookieParser());
 
-  const rawOrigins = process.env.CORS_ORIGINS ?? 'http://localhost:8080';
-  const allowedOrigins = rawOrigins.split(',').map((o) => o.trim()).filter(Boolean);
+  // Defaults live in config.validation.ts — single source of truth.
+  const config = app.get(ConfigService);
+  const port = config.get<number>('PORT');
+  const isProduction = config.get<string>('NODE_ENV') === 'production';
+  const allowedOrigins = config.get<string>('CORS_ORIGINS', '').split(',').map((o) => o.trim()).filter(Boolean);
 
   app.enableCors({
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
@@ -29,7 +31,7 @@ async function bootstrap() {
       }
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Secret'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
 
@@ -42,24 +44,22 @@ async function bootstrap() {
   );
   app.useGlobalInterceptors(new TransformInterceptor());
 
-  const config = new DocumentBuilder()
+  const swaggerConfig = new DocumentBuilder()
     .setTitle('')
     .setDescription('Application API documentation')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
 
-  const port = process.env.PORT ?? 8080;
-
-  if (process.env.NODE_ENV !== 'production') {
-    const document = SwaggerModule.createDocument(app, config);
+  if (!isProduction) {
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('docs', app, document);
   }
 
   await app.listen(port);
   const pinoLogger = app.get(Logger);
   pinoLogger.log(`Application running on port ${port}`, 'Bootstrap');
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProduction) {
     pinoLogger.log(`Swagger: http://localhost:${port}/docs`, 'Bootstrap');
   }
 }

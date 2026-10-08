@@ -19,7 +19,7 @@ import {
   GetParticipantsQueryDto,
   BulkAddParticipantsDto,
 } from './dto/event.dto';
-import { PageParams, PaginatedResult, paginate } from '@/common/pagination';
+import { PaginatedResult, paginate } from '@/common/pagination';
 
 const EVENT_INCLUDE = {
   translations: true,
