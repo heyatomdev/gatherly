@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
+import { TenantAdminRoleGuard } from '@/modules/bastion/guards/tenant-admin-role.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { ClientService } from '@/modules/clients/client.service';
 
@@ -48,11 +49,13 @@ export class AdminSettingsController {
   }
 
   @Patch()
+  @UseGuards(TenantAdminRoleGuard)
   updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
     return this.clients.updateClient(req.adminClient.id, dto);
   }
 
   @Post('webhook-secret')
+  @UseGuards(TenantAdminRoleGuard)
   @HttpCode(HttpStatus.OK)
   regenerateWebhookSecret(@Request() req) {
     return this.clients.regenerateWebhookSecret(req.adminClient.id);

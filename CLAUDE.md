@@ -147,6 +147,16 @@ behind `BastionUserGuard` and act on `req.adminClient` (the client bound to
 the caller's own tenant) — that's a different guard and a different set of
 routes from `/admin/clients`.
 
+`BastionUserGuard` accepts every `ADMIN_ACCEPTED_ROLES` role, MODERATOR and
+AUTHOR included. Tenant-level writes that could leak data are narrowed further
+with `TenantAdminRoleGuard` (`src/modules/bastion/guards/tenant-admin-role.guard.ts`,
+ADMIN/OWNER/SUPER_ADMIN only) at method level: `PATCH /admin/settings`
+(webhookUrl → redirect webhook payloads), `POST /admin/settings/webhook-secret`
+(returns the new HMAC secret), `POST /admin/webhooks/deliveries/:id/retry`.
+GETs stay open to all accepted roles (settings GET returns safe fields only).
+Method-level only: it reads `req.adminUser`, which the class-level
+`BastionUserGuard` sets first; without it the guard denies.
+
 ### Bastion integration lives in `@heyatom/bastion-client` (since 2026-09-22)
 
 `BastionModule.forRootAsync` in `AppModule` (env: `BASTION_URL`, `BASTION_APP_SLUG`,
