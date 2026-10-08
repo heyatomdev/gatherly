@@ -43,7 +43,8 @@ export class AdminSettingsController {
 
   @Get()
   getSettings(@Request() req) {
-    return req.adminClient;
+    // Never return req.adminClient as-is: it carries token + webhookSecret.
+    return this.clients.getClient(req.adminClient.id);
   }
 
   @Patch()

@@ -50,6 +50,12 @@ export class ClientService {
     });
   }
 
+  async getClient(id: string) {
+    const client = await this.prisma.client.findUnique({ where: { id }, select: CLIENT_SELECT_SAFE });
+    if (!client) throw new NotFoundException(`Client ${id} not found`);
+    return client;
+  }
+
   async updateClient(id: string, dto: UpdateClientDto) {
     await this.findOrFail(id);
     if (dto.webhookUrl) await assertSafeWebhookUrl(dto.webhookUrl);
