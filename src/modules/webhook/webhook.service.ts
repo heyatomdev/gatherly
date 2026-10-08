@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHmac } from 'crypto';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { checkWebhookUrl, webhookAgent } from './webhook-url';
 import { WebhookEventType, EventWebhookPayload, ParticipantWebhookPayload } from './dto/webhook-event.dto';
 
 @Injectable()
@@ -54,6 +55,8 @@ export class WebhookService {
     const attempts = delivery.attempts + 1;
 
     try {
+      // Re-checked at send time: URLs stored before validation existed, and DNS can change.
+      checkWebhookUrl(delivery.webhookUrl);
       const body = JSON.stringify(delivery.payload);
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -71,7 +74,12 @@ export class WebhookService {
       await firstValueFrom(
         this.httpService.post(delivery.webhookUrl, body, {
           headers,
+          httpsAgent: webhookAgent,
+          maxRedirects: 0,
+          maxContentLength: 64 * 1024,
+          responseType: 'text',
           timeout: 10_000,
+          signal: AbortSignal.timeout(10_000),
         }),
       );
 
@@ -89,10 +97,12 @@ export class WebhookService {
           attempts,
           status: failed ? 'FAILED' : 'PENDING',
           nextRetryAt: failed ? undefined : new Date(Date.now() + backoffSeconds * 1000),
-          lastError: error instanceof Error ? error.message : 'Unknown error',
+          // Generic on purpose: raw socket errors (ECONNREFUSED vs timeout…) are a port-scan oracle.
+          lastError: error?.response?.status ? `HTTP ${error.response.status}` : 'Delivery failed',
         },
       });
 
+      this.logger.debug(`Webhook delivery ${delivery.id} failed: ${error?.message}`);
       if (failed) {
         this.logger.error(
           `Webhook permanently failed after ${attempts} attempts: ${delivery.webhookUrl}`,
