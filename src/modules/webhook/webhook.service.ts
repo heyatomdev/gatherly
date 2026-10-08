@@ -5,6 +5,7 @@ import { createHmac } from 'crypto';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { checkWebhookUrl, webhookAgent } from './webhook-url';
+import { formatEventForWebhook } from './webhook.helper';
 import { WebhookEventType, EventWebhookPayload, ParticipantWebhookPayload } from './dto/webhook-event.dto';
 
 @Injectable()
@@ -142,7 +143,7 @@ export class WebhookService {
       event: WebhookEventType.EVENT_CREATED,
       timestamp: new Date().toISOString(),
       clientId,
-      data: eventData,
+      data: formatEventForWebhook(eventData),
     });
   }
 
@@ -155,7 +156,7 @@ export class WebhookService {
       event: WebhookEventType.EVENT_UPDATED,
       timestamp: new Date().toISOString(),
       clientId,
-      data: eventData,
+      data: formatEventForWebhook(eventData),
     });
   }
 
@@ -168,7 +169,7 @@ export class WebhookService {
       event: WebhookEventType.EVENT_CANCELLED,
       timestamp: new Date().toISOString(),
       clientId,
-      data: eventData,
+      data: formatEventForWebhook(eventData),
     });
   }
 
@@ -181,7 +182,7 @@ export class WebhookService {
       event: WebhookEventType.EVENT_PUBLISHED,
       timestamp: new Date().toISOString(),
       clientId,
-      data: eventData,
+      data: formatEventForWebhook(eventData),
     });
   }
 
@@ -194,7 +195,7 @@ export class WebhookService {
       event: WebhookEventType.EVENT_COMPLETED,
       timestamp: new Date().toISOString(),
       clientId,
-      data: eventData,
+      data: formatEventForWebhook(eventData),
     });
   }
 

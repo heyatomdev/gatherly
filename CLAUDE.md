@@ -303,6 +303,20 @@ Event types: `event.created`, `event.updated`, `event.cancelled`, `event.publish
 
 Webhook failures are caught and logged — they never break the main operation.
 
+**Event payloads are trimmed**: every `notifyEvent*` runs the event through
+`formatEventForWebhook` inside `WebhookService` — flat `title`/`description`
+in the default locale, tag slugs, no `participants`, no `translations` array.
+Don't send raw `EVENT_INCLUDE` rows (participant PII).
+
+**SSRF guard** (`webhook-url.ts`): `webhookUrl` must be `https`. On save
+(`/admin/settings`, `/admin/clients`) the host is resolved and
+private/loopback/link-local/ULA/metadata/NAT64 addresses → 400. At send time
+the URL is re-checked and the request goes through `webhookAgent`, whose DNS
+lookup refuses private addresses (stored URLs, DNS rebinding). No redirects,
+64KB response cap, 10s total deadline. `lastError` is `HTTP <status>` or
+`Delivery failed` — never the raw socket error. Pre-existing `http://` URLs
+now fail delivery until updated.
+
 ---
 
 ## Prisma Notes
