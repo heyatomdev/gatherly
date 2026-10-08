@@ -8,7 +8,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { DateTime } from 'luxon';
-import { rrulestr } from 'rrule';
+import { RRule, Options as RRuleOptions } from 'rrule';
 import { PrismaService } from '../prisma/prisma.service';
 import { BastionAuditService } from '../bastion/bastion-audit.service';
 import {
@@ -38,6 +38,51 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 const RETENTION_DAYS = 90;
 
+const DAY = '([+-]?\\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)';
+const INTS = (n: number) => `[+-]?\\d{1,${n}}(,[+-]?\\d{1,${n}})*`;
+// Strict per-part grammar: rrule happily accepts junk like INTERVAL=abc and then loops forever.
+const RRULE_PARTS = new Map<string, RegExp>(Object.entries({
+  FREQ: /^(DAILY|WEEKLY|MONTHLY|YEARLY)$/,
+  INTERVAL: /^[1-9]\d{0,2}$/,
+  COUNT: /^[1-9]\d{0,2}$/,
+  UNTIL: /^\d{8}(T\d{6}Z?)?$/,
+  BYDAY: new RegExp(`^${DAY}(,${DAY})*$`),
+  BYMONTH: new RegExp(`^${INTS(2)}$`),
+  BYMONTHDAY: new RegExp(`^${INTS(2)}$`),
+  BYSETPOS: new RegExp(`^${INTS(3)}$`),
+  WKST: /^(MO|TU|WE|TH|FR|SA|SU)$/,
+}));
+const RECURRENCE_WINDOW_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+
+/** Validates an RRULE string and returns its options. Throws 400 on anything unexpected. */
+export function parseRecurrenceRule(rule: string): Partial<RRuleOptions> {
+  const body = rule.trim().toUpperCase().replace(/^RRULE:/, '');
+  const parts = body.split(';');
+  const keys = parts.map((part) => {
+    const [key, value, ...rest] = part.split('=');
+    if (rest.length || !RRULE_PARTS.get(key)?.test(value ?? '')) {
+      throw new BadRequestException(`Invalid recurrenceRule part: ${part.slice(0, 50)}`);
+    }
+    return key;
+  });
+  if (!keys.includes('FREQ') || new Set(keys).size !== keys.length) {
+    throw new BadRequestException('recurrenceRule needs exactly one FREQ and no repeated parts');
+  }
+  try {
+    const options = RRule.parseString(body);
+    const now = new Date();
+    new RRule({ ...options, dtstart: now }).between(
+      now,
+      new Date(now.getTime() + RECURRENCE_WINDOW_MS),
+      true,
+      (_, i) => i < 1,
+    );
+    return options;
+  } catch {
+    throw new BadRequestException('Invalid recurrenceRule');
+  }
+}
+
 @Injectable()
 export class EventService {
   constructor(
@@ -54,6 +99,7 @@ export class EventService {
   async createEvent(clientId: string, data: CreateEventDto) {
     let recurrenceRuleId: string | undefined;
     if (data.recurrenceRule) {
+      parseRecurrenceRule(data.recurrenceRule);
       const rule = await this.prisma.recurrenceRule.create({
         data: {
           rule: data.recurrenceRule,
@@ -121,15 +167,14 @@ export class EventService {
       .setZone(tz)
       .toJSDate();
 
-    const rrule = rrulestr(rule.rule, { dtstart, tzid: tz });
+    const rrule = new RRule({ ...parseRecurrenceRule(rule.rule), dtstart, tzid: tz });
     const maxOccurrences = rule.count ?? 52;
-    const endDate = rule.endDate;
+    const windowEnd = new Date(dtstart.getTime() + RECURRENCE_WINDOW_MS);
+    const until = rule.endDate && rule.endDate < windowEnd ? rule.endDate : windowEnd;
 
-    let occurrences = rrule
-      .all((_, count) => count < maxOccurrences)
+    const occurrences = rrule
+      .between(dtstart, until, true, (_, i) => i < maxOccurrences)
       .filter((d) => d.getTime() !== parentEvent.startTime.getTime());
-
-    if (endDate) occurrences = occurrences.filter((d) => d <= endDate);
 
     const duration = parentEvent.endTime
       ? parentEvent.endTime.getTime() - parentEvent.startTime.getTime()

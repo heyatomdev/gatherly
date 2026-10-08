@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { EventService } from './event.service';
+import { EventService, parseRecurrenceRule } from './event.service';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 import { BastionAuditService } from '@/modules/bastion/bastion-audit.service';
 
@@ -493,5 +493,65 @@ describe('EventService', () => {
 
       expect(result.stats.availableSpots).toBeNull();
     });
+  });
+});
+
+describe('parseRecurrenceRule', () => {
+  it.each([
+    'FREQ=WEEKLY;BYDAY=MO',
+    'RRULE:FREQ=MONTHLY;BYDAY=1FR;INTERVAL=2',
+    'freq=daily;count=10',
+    'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30',
+  ])('accepts %s', (rule) => {
+    expect(parseRecurrenceRule(rule).freq).toBeDefined();
+  });
+
+  it.each([
+    'FREQ=SECONDLY;BYMONTH=2;BYMONTHDAY=30',
+    'FREQ=HOURLY',
+    'FREQ=WEEKLY;INTERVAL=abc',
+    'FREQ=WEEKLY;INTERVAL=0',
+    'FREQ=WEEKLY;BYDAY=XX',
+    'FREQ=WEEKLY;BYHOUR=1,2,3',
+    'FREQ=WEEKLY;FREQ=DAILY',
+    'BYDAY=MO',
+    'FREQ=WEEKLY;constructor=1',
+    'hello',
+    '',
+  ])('rejects %s with 400', (rule) => {
+    expect(() => parseRecurrenceRule(rule)).toThrow(BadRequestException);
+  });
+});
+
+describe('EventService.createEvent recurrence', () => {
+  it('rejects a bad rule before any DB write', async () => {
+    const service = new EventService(mockPrisma as any, mockAudit as any);
+    jest.clearAllMocks();
+    await expect(
+      service.createEvent(CLIENT_ID, {
+        translations: [{ locale: 'it', title: 'x' }],
+        startTime: new Date().toISOString(),
+        recurrenceRule: 'FREQ=SECONDLY;BYMONTH=2;BYMONTHDAY=30',
+      } as any),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockPrisma.recurrenceRule.create).not.toHaveBeenCalled();
+    expect(mockPrisma.event.create).not.toHaveBeenCalled();
+  });
+
+  it('generates at most recurrenceCount instances within 2 years', async () => {
+    const service = new EventService(mockPrisma as any, mockAudit as any);
+    jest.clearAllMocks();
+    const start = new Date(Date.now() + 86_400_000);
+    await (service as any).generateRecurringInstances(
+      baseEvent({
+        startTime: start,
+        timezone: 'UTC',
+        recurrenceRuleId: 'rr-1',
+        recurrenceRule: { rule: 'FREQ=DAILY', count: 400, endDate: null },
+      }),
+    );
+    const rows = mockTx.event.createMany.mock.calls[0][0].data;
+    expect(rows.length).toBe(399); // cap counts the parent occurrence
+    expect(rows.at(-1).startTime.getTime() - start.getTime()).toBeLessThanOrEqual(2 * 365 * 86_400_000);
   });
 });
