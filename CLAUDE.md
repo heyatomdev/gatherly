@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Multi-tenant event management API. Clients (gyms, gaming orgs, etc.) call the API with a token to create and manage events, categories, tags, and participants. Supports i18n (it/en or any locale), recurring events via iCal RRULE, and two participant types: inline (no external account) and external (linked to a third-party user ID).
+Multi-tenant event management API. Clients (gyms, gaming orgs, etc.) call the API with a Bastion service-client JWT to create and manage events, categories, tags, and participants. Supports i18n (it/en or any locale), recurring events via iCal RRULE, and two participant types: inline (no external account) and external (linked to a third-party user ID).
 
 ---
 
@@ -33,12 +33,31 @@ pnpm start:dev           # watch mode
 
 ### ENV vars
 
+Validated at boot by `src/configs/config.validation.ts` (class-validator) —
+defaults live there only; `main.ts` reads them through `ConfigService`.
+
 | Var | Default | Required |
 |-----|---------|----------|
 | `DATABASE_URL` | — | Yes |
 | `NODE_ENV` | `development` | No |
 | `PORT` | `3000` | No |
-| `BASE_URL` | `http://localhost:3000` | No |
+| `CORS_ORIGINS` | `http://localhost:3000` (comma-separated) | No |
+| `LOG_LEVEL` | `info` | No |
+| `BASTION_URL` | — | Yes |
+| `BASTION_APP_SLUG` | — | Yes |
+| `BASTION_CLIENT_API_KEY` | — | Yes |
+| `BASTION_TENANT_SLUG` | — | No (single-tenant only) |
+| `BASTION_JWKS_TTL_MS` | `300000` | No |
+| `THROTTLE_TTL_MS` | `60000` | No |
+| `THROTTLE_LIMIT` | `100` | No |
+| `ADMIN_ACCEPTED_APP_SLUGS` | `gatherly` | No (add `meridian`) |
+| `ADMIN_ACCEPTED_ROLES` | `ADMIN,OWNER,SUPER_ADMIN,MODERATOR,AUTHOR` | No |
+| `VIP_THRESHOLD` | `5` | No |
+| `AT_RISK_DAYS` | `120` | No |
+| `METRICS_PORT` | `9091` | No |
+| `DATABASE_POOL_MAX` | `10` | No |
+| `DATABASE_CONNECTION_TIMEOUT_MS` | `5000` | No |
+| `DATABASE_STATEMENT_TIMEOUT_MS` | `30000` | No |
 
 ### Docker
 
@@ -64,20 +83,18 @@ pnpm lint             # ESLint fix
 ```
 src/
   guards/
-    client-auth.guard.ts     # reads X-Client-Token header, attaches req.client
-  filters/
-    http-exception.filter.ts # global error shape
+    admin-throttler.guard.ts # throttling for /admin/*
   configs/
-    config.schema.ts         # config factory
-    config.validation.ts     # Joi schema
+    config.validation.ts     # env validation + defaults (class-validator)
   modules/
     prisma/                  # @Global PrismaService
-    app/                     # root module, status endpoint
+    app/                     # root module
+    bastion/                 # JWKS cache, BastionJwtGuard (global), BastionUserGuard, BastionSuperAdminGuard
     clients/                 # ClientService only — no controller, no self-service (see below)
     categories/              # EventCategory CRUD (i18n)
     events/                  # Event CRUD + participants + recurrence
     tags/                    # Tag CRUD (client-scoped)
-    webhook/                 # WebhookService + helper formatters
+    webhook/                 # WebhookService (outbox + delivery cron) + helper formatters
     admin/
       controllers/
         admin-clients.controller.ts  # /admin/clients — SUPER_ADMIN only, see below
@@ -89,14 +106,22 @@ src/
 
 ## Auth
 
-All routes except `POST /clients` and `GET /clients` require `X-Client-Token` header.
+Machine-to-machine calls use a **Bastion service-client JWT**
+(`Authorization: Bearer <jwt>`, RS256, from Bastion `POST /auth/client`).
+`X-Client-Token` / `ClientAuthGuard` are gone — `Client.token` is still in the
+schema but nothing reads it.
 
-`ClientAuthGuard` checks:
-1. Header present
-2. Token exists in DB
-3. `client.isActive === true` (revoked clients fail)
+The global `BastionJwtGuard` (`src/modules/bastion/guards/bastion-jwt.guard.ts`,
+`APP_GUARD`) on every non-`/admin`, non-`@Public()` route:
+1. Requires `Authorization: Bearer ...`
+2. Verifies it via the package's `ServiceClientJwtGuard`: RS256 signature
+   against Bastion JWKS (cached), `exp`, `type === 'service_client'`,
+   `serviceSlug === BASTION_APP_SLUG` (wrong service → `403`)
+3. Looks up the `Client` by the token's `tenantId` (`@unique`); missing or
+   `isActive === false` → `401`
 
-Token attached to `req.client` — access in controllers via `@Request() req`.
+Payload and client are attached as `req.user` / `req.client` — access in
+controllers via `@Request() req`. Exclude a route with `@Public()`.
 
 ### Client management — no longer self-service
 
@@ -108,7 +133,8 @@ client bound to any Bastion `tenantId` and read its token, or any tenant's
 token could modify/revoke/regenerate another tenant's client. It's gone.
 
 Client CRUD now lives at `/admin/clients`, gated by `BastionSuperAdminGuard`
-(`src/modules/bastion/guards/bastion-super-admin.guard.ts`) — SUPER_ADMIN
+(`src/modules/bastion/guards/bastion-super-admin.guard.ts`, a subclass of the
+package's `BastionUserGuard` with `acceptedRoles` narrowed) — SUPER_ADMIN
 role only, no tenant/client lookup (deliberately: the first client on an
 empty DB could never be created otherwise, and a SUPER_ADMIN manages clients
 across tenants, not just their own). Created from Meridian → Gatherly →
@@ -121,10 +147,34 @@ behind `BastionUserGuard` and act on `req.adminClient` (the client bound to
 the caller's own tenant) — that's a different guard and a different set of
 routes from `/admin/clients`.
 
+`BastionUserGuard` accepts every `ADMIN_ACCEPTED_ROLES` role, MODERATOR and
+AUTHOR included. Tenant-level writes that could leak data are narrowed further
+with `TenantAdminRoleGuard` (`src/modules/bastion/guards/tenant-admin-role.guard.ts`,
+ADMIN/OWNER/SUPER_ADMIN only) at method level: `PATCH /admin/settings`
+(webhookUrl → redirect webhook payloads), `POST /admin/settings/webhook-secret`
+(returns the new HMAC secret), `POST /admin/webhooks/deliveries/:id/retry`.
+GETs stay open to all accepted roles (settings GET returns safe fields only).
+Method-level only: it reads `req.adminUser`, which the class-level
+`BastionUserGuard` sets first; without it the guard denies.
+
+### Bastion integration lives in `@heyatom/bastion-client` (since 2026-09-22)
+
+`BastionModule.forRootAsync` in `AppModule` (env: `BASTION_URL`, `BASTION_APP_SLUG`,
+`BASTION_CLIENT_API_KEY`, `BASTION_TENANT_SLUG`, `BASTION_JWKS_TTL_MS`,
+`ADMIN_ACCEPTED_APP_SLUGS`, `ADMIN_ACCEPTED_ROLES`) replaces the hand-copied
+`src/modules/bastion/` services. Import `BastionAuditService`, `@Public()`,
+`@RequireScope()`, `@CurrentClient()` and the payload types from
+`@heyatom/bastion-client/nest`. Only the three guards stay local, as thin
+subclasses: they add what is Gatherly's alone — the binding of the token's
+tenant to a local `Client` row (`req.client` on the machine surface,
+`req.adminClient` on `/admin`). A wrong-service machine token now answers 403,
+not 401 (package semantics: authenticated, wrong audience).
+
 ### ⚠️ `/admin/*` bypasses the global guard — every admin controller must gate itself
 
 The global `BastionJwtGuard` (`src/modules/bastion/guards/bastion-jwt.guard.ts`,
-registered as `APP_GUARD`) returns `true` for **every** path starting with
+registered as `APP_GUARD`, a subclass of `ServiceClientJwtGuard` from
+`@heyatom/bastion-client/nest` that adds the local `Client` lookup) returns `true` for **every** path starting with
 `/admin`, no exceptions — auth for the whole admin surface is deferred to
 per-controller `@UseGuards(...)`. A new controller under `AdminModule` (or
 any new controller mounted at `/admin/...`) that forgets its own guard is
@@ -295,13 +345,52 @@ No more public `/clients` — see "Client management — no longer self-service"
 
 ## Webhook
 
-Client sets `webhookUrl` on their record. `WebhookService` sends POST to that URL on events.
+Client sets `webhookUrl` on their record. `WebhookService.notify` writes a `WebhookDelivery` row (outbox); the `processQueue` cron POSTs it, HMAC-signed with the client's webhook secret.
 
 Event types: `event.created`, `event.updated`, `event.cancelled`, `event.published`, `event.completed`, `participant.joined`, `participant.status_changed`, `participant.removed`, `participant.checked_in`.
 
-`webhook.helper.ts` has `formatEventForWebhook(event, locale?)` and `formatParticipantForWebhook(participant, locale?)` — both accept an optional locale, fall back to first available translation.
+All nine are emitted from `EventService` (not controllers), so the tenant API
+and `/admin/events` both fire them. Single entry point:
+`WebhookService.notify(clientId, type, item | item[], extra?)` — looks up the
+client's `webhookUrl` (no-op if unset) and builds the payload itself via
+`formatEventForWebhook` / `formatParticipantForWebhook`. Event payloads never
+carry participants; participant payloads carry no `email`/`notes`/`metadata`
+(tenant fetches the row by id if needed). `participant.status_changed` has
+`previousStatus`, and also fires when a waitlisted participant is promoted.
+Bulk add emits one `participant.joined` per created row. The 2AM cron's
+auto-complete of recurring children emits nothing.
 
-Webhook failures are caught and logged — they never break the main operation.
+Emission is fire-and-forget (`this.emit(...)` → `.catch(logger.warn)`) and runs
+after the DB transaction commits — webhook failures never break the main operation.
+
+Delivery is an outbox: `notify()` writes `WebhookDelivery` rows, the
+`processQueue` cron (every minute) sends it. Rows are **claimed** before
+sending by `claimDue()` — one `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE
+SKIP LOCKED) RETURNING id` that pushes `nextRetryAt` forward by
+`CLAIM_LEASE_MINUTES` (5). Multiple replicas or an overlapping tick each get
+a disjoint batch (50), so no delivery is sent twice; a worker that dies
+mid-send leaves the row to come back when the lease expires. `attempt()` then
+sets `DELIVERED`, or `PENDING` with backoff `2^attempts * 30s`, or `FAILED` at
+`maxAttempts`. Manual retry resets a `FAILED` row to `PENDING`, due now.
+Leased rows have `nextRetryAt` in the future, so they don't count toward
+`gatherly_webhook_deliveries_overdue` while in flight. Never read the queue
+with a plain `findMany` — that's how double sends happened.
+
+`cleanupDeliveries` (weekly) deletes `DELIVERED` rows older than 30 days and
+`FAILED` rows older than 90 days.
+
+**Event payloads are trimmed**: `formatEventForWebhook` gives flat
+`title`/`description` in the default locale, tag slugs, no `participants`,
+no `translations` array. Don't send raw `EVENT_INCLUDE` rows (participant PII).
+
+**SSRF guard** (`webhook-url.ts`): `webhookUrl` must be `https`. On save
+(`/admin/settings`, `/admin/clients`) the host is resolved and
+private/loopback/link-local/ULA/metadata/NAT64 addresses → 400. At send time
+the URL is re-checked and the request goes through `webhookAgent`, whose DNS
+lookup refuses private addresses (stored URLs, DNS rebinding). No redirects,
+64KB response cap, 10s total deadline. `lastError` is `HTTP <status>` or
+`Delivery failed` — never the raw socket error. Pre-existing `http://` URLs
+now fail delivery until updated.
 
 ---
 
@@ -312,21 +401,47 @@ Webhook failures are caught and logged — they never break the main operation.
 - `RecurrenceRule` is unscoped (no `clientId`) — it's a pure config object.
 - `Tag.slug` is auto-lowercased at service level before DB write.
 - `EventTag` is an explicit junction model (not implicit many-to-many) — cannot use Prisma's `connect`/`set` shorthand. Use `deleteMany` + `createMany` to replace tags.
+- `participants_email_norm_idx` is an expression index on `lower(trim(email))` (People/analytics match on that), created in raw SQL in `20261008090000_perf_indexes` — Prisma can't model it and ignores it in diffs. Don't add a plain `@@index([email])` back.
+- Capacity (`maxParticipants`) is enforced under a row lock: every participant write that can change the active count (`addParticipant`, bulk, `removeParticipant`, `updateParticipantStatus`) starts its transaction with `lockEvent()` (`SELECT ... FROM events WHERE id AND clientId FOR UPDATE`), then counts. No Serializable isolation, no retries needed. New writes of that kind must do the same.
+- Event list/detail return `_count.participants` (active = REGISTERED + CONFIRMED), never the participant rows — use `GET /events/:id/participants` (paginated). Detail's `childEvents` is `{ id, startTime, status, _count }`, first 100 by `startTime`.
+- pg pool: `DATABASE_POOL_MAX` (10), `DATABASE_CONNECTION_TIMEOUT_MS` (5000), `DATABASE_STATEMENT_TIMEOUT_MS` (30000), read by `PrismaService`.
+
+---
+
+## Metrics
+
+`GET /metrics` (Prometheus, `@prometheus-io/client`) is served by `MetricsServer` (`src/modules/metrics/`) on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`).
+
+- **Isolation is the network's job**: never publish 9091 from the container, nginx never proxies it. Prometheus scrapes `gatherly:9091` on the internal Docker network.
+- `MetricsMiddleware` (all routes, in `AppModule.configure`) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.
+- **`gatherly_webhook_deliveries{status}`** (gauge): `webhook_deliveries` rows per `WebhookDeliveryStatus` (`PENDING`/`DELIVERED`/`FAILED`), every value always emitted, 0 if absent. `DELIVERED` drops weekly (cleanup cron deletes old rows), so read trends, not absolutes.
+- **`gatherly_webhook_deliveries_overdue`** (gauge): `PENDING` rows with `nextRetryAt` in the past — the "queue is stuck" signal. `PENDING` is the only non-terminal status (`FAILED` is final after `maxAttempts`, back to `PENDING` only via manual retry). `WebhookService.processQueue` runs every minute (50 rows per tick), so short non-zero blips are normal. Suggested alert: `gatherly_webhook_deliveries_overdue > 0 for 15m`. Served by the `(status, nextRetryAt)` index.
+- Both gauges are computed lazily in `collect()` (no query until scraped); a DB error logs `warn` and keeps the previous value instead of failing the scrape.
 
 ---
 
 ## Cron Jobs
 
-`EventService.cleanupPastEvents` — runs at 2AM daily. Deletes child recurring events (`parentEventId != null`) whose `startTime` is in the past.
+All crons run on every replica, so each one that writes takes a
+transaction-scoped advisory lock via `PrismaService.withAdvisoryLock(name, fn)`
+(`pg_try_advisory_xact_lock`); losers skip that tick.
+
+- `EventService.cleanupPastEvents` — 2AM daily. Marks past `DRAFT`/`PUBLISHED`
+  recurring children (`parentEventId != null`) `COMPLETED`. **Never deletes
+  events**: deleting cascaded to `Participant` and wiped the history that
+  analytics, People history and VIP/at-risk depend on.
+- `EventService.cleanupExpiredIdempotencyKeys` — hourly.
+- `WebhookService.cleanupDeliveries` — weekly (see Webhook).
+- `WebhookService.processQueue` — every minute; uses `SKIP LOCKED` claims instead of the advisory lock.
 
 ---
 
 ## Adding a New Module
 
-1. `src/modules/<name>/dto/<name>.dto.ts` — DTOs with class-validator decorators
-2. `src/modules/<name>/<name>.service.ts` — injectable service, inject `PrismaService`
-3. `src/modules/<name>/<name>.controller.ts` — `@ApiTags`, `@UseGuards(ClientAuthGuard)` if auth required
-4. `src/modules/<name>/<name>.module.ts` — include `ClientAuthGuard` in providers if used, export service
+1. `src/modules/<name>/dto/<name>.dto.ts` — DTOs with class-validator + `@ApiProperty`
+2. `src/modules/<name>/<name>.service.ts` — injectable service, inject `PrismaService`, scope every query by `req.client.id`
+3. `src/modules/<name>/<name>.controller.ts` — `@ApiTags`; auth is automatic via the global `BastionJwtGuard` (no `@UseGuards` needed). Under `/admin/*` it is **not** — add `BastionUserGuard`/`BastionSuperAdminGuard` + `AdminThrottlerGuard` yourself (see warning above)
+4. `src/modules/<name>/<name>.module.ts` — export service
 5. Add to `AppModule` imports
 
 Do NOT add `PrismaService` to module providers — it is globally provided.
@@ -343,9 +458,9 @@ Rules:
 
 ## Docs
 
-- `docs/GATHERLY_INTEGRATION.md` — integration guide per altri servizi (fonte di verità in `../docs/`)
+- `../docs/GATHERLY_INTEGRATION.md` — integration guide per altri servizi (unica copia)
 - `docs/dev-plans/` — piani di sviluppo storici
-- `../docs/BASTION_INTEGRATION.md` — Bastion JWT/JWKS guide (NB: Gatherly usa X-Client-Token, non Bastion)
+- `../docs/BASTION_INTEGRATION.md` — Bastion JWT/JWKS guide
 - `../docs/FILEHARBOR_INTEGRATION.md` — FileHarbor integration guide
 - `../docs/ARTICUNO_INTEGRATION.md` — Articuno integration guide
 - `../docs/CODING_STANDARDS.md` — NestJS conventions condivise

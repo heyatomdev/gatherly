@@ -5,3 +5,6 @@ allowBuilds:
   '@scarf/scarf': false
   '@prisma/engines': true
   prisma: true
+
+overrides:
+  proxy-addr: '>=2.0.8'

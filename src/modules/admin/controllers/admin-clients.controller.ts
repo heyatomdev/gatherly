@@ -14,7 +14,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { BastionSuperAdminGuard } from '@/modules/bastion/guards/bastion-super-admin.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
-import { BastionAuditService } from '@/modules/bastion/bastion-audit.service';
+import { BastionAuditService } from '@heyatom/bastion-client/nest';
 import { ClientService } from '@/modules/clients/client.service';
 import { CreateClientDto, UpdateClientDto } from '@/modules/clients/dto/client.dto';
 

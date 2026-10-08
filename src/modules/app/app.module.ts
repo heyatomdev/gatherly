@@ -9,8 +9,15 @@ import {EventModule} from "@/modules/events/event.module";
 import {CategoryModule} from "@/modules/categories/category.module";
 import {TagModule} from "@/modules/tags/tag.module";
 import { HealthModule } from '@/modules/health/health.module';
-import { BastionModule } from '@/modules/bastion/bastion.module';
+import { MetricsModule } from '@/modules/metrics/metrics.module';
+import { MetricsMiddleware } from '@/modules/metrics/metrics.middleware';
+
 import { BastionJwtGuard } from '@/modules/bastion/guards/bastion-jwt.guard';
+import { BastionModule } from '@heyatom/bastion-client/nest';
+
+/** Comma-separated env list → array; undefined keeps the package default. */
+const splitList = (raw?: string): string[] | undefined =>
+    raw === undefined ? undefined : raw.split(',').map((s) => s.trim()).filter(Boolean);
 import { AdminModule } from '@/modules/admin/admin.module';
 import { RequestIdMiddleware } from '@/middleware/request-id.middleware';
 import { validate } from '@/configs/config.validation';
@@ -43,7 +50,6 @@ import { APP_GUARD } from '@nestjs/core';
                     paths: [
                         'req.headers.authorization',
                         'req.headers.cookie',
-                        'req.headers["x-internal-secret"]',
                     ],
                     remove: true,
                 },
@@ -61,8 +67,20 @@ import { APP_GUARD } from '@nestjs/core';
         ScheduleModule.forRoot(),
         // Core modules
         PrismaModule,
-        BastionModule,
+        BastionModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                baseUrl: config.getOrThrow<string>('BASTION_URL'),
+                serviceSlug: config.getOrThrow<string>('BASTION_APP_SLUG'),
+                apiKey: config.get<string>('BASTION_CLIENT_API_KEY'),
+                tenantSlug: config.get<string>('BASTION_TENANT_SLUG'),
+                jwksTtlMs: config.get<number>('BASTION_JWKS_TTL_MS'),
+                acceptedAppSlugs: splitList(config.get<string>('ADMIN_ACCEPTED_APP_SLUGS')),
+                acceptedRoles: splitList(config.get<string>('ADMIN_ACCEPTED_ROLES')),
+            }),
+        }),
         HealthModule,
+        MetricsModule,
         ClientModule,
         EventModule,
         CategoryModule,
@@ -77,7 +95,9 @@ import { APP_GUARD } from '@nestjs/core';
 
 export class AppModule implements NestModule {
     configure(consumer: MiddlewareConsumer): void {
-        consumer.apply(RequestIdMiddleware).forRoutes('*');
+        // MetricsMiddleware is a middleware and not an APP_INTERCEPTOR on purpose:
+        // interceptors run after the guards, so 401s and 429s would never be counted.
+        consumer.apply(RequestIdMiddleware, MetricsMiddleware).forRoutes('*');
     }
 }
 

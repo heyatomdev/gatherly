@@ -2,7 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request = require('supertest');
 import { AppModule } from '@/modules/app/app.module';
-import { BastionJwksService } from '@/modules/bastion/bastion-jwks.service';
+import { BastionJwksService } from '@heyatom/bastion-client/nest';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 
 /**

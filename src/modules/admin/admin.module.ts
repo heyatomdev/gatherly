@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { BastionModule } from '@/modules/bastion/bastion.module';
+
 import { EventModule } from '@/modules/events/event.module';
 import { CategoryModule } from '@/modules/categories/category.module';
 import { TagModule } from '@/modules/tags/tag.module';
@@ -19,7 +19,7 @@ import { AdminPeopleService } from './people/admin-people.service';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 
 @Module({
-  imports: [BastionModule, EventModule, CategoryModule, TagModule, ClientModule, WebhookModule],
+  imports: [EventModule, CategoryModule, TagModule, ClientModule, WebhookModule],
   controllers: [
     AdminEventsController,
     AdminParticipantsController,

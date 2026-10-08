@@ -53,16 +53,13 @@ export interface ParticipantWebhookPayload extends WebhookPayload {
   data: {
     id: string;
     eventId: string;
-    eventTitle: string;
     type: 'INLINE' | 'EXTERNAL';
     userName: string;
-    email?: string;
     externalId?: string;
     externalSource?: string;
     status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
     previousStatus?: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
     role: 'ATTENDEE' | 'SPEAKER' | 'ORGANIZER' | 'HOST';
-    notes?: string;
     checkedIn: boolean;
     checkedInAt?: Date;
     createdAt: Date;

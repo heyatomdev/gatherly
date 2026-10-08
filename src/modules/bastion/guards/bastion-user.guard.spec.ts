@@ -1,21 +1,11 @@
 import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { BastionUserGuard } from './bastion-user.guard';
-import { BastionJwksService } from '../bastion-jwks.service';
+import { BastionJwksService, BASTION_OPTIONS, BastionAuditService } from '@heyatom/bastion-client/nest';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 
 const mockJwks = { verify: jest.fn() };
 const mockPrisma = { client: { findUnique: jest.fn() } };
-const mockConfig = {
-  get: jest.fn((key: string) =>
-    key === 'ADMIN_ACCEPTED_APP_SLUGS'
-      ? 'gatherly,meridian'
-      : key === 'ADMIN_ACCEPTED_ROLES'
-        ? 'ADMIN,OWNER,SUPER_ADMIN,MODERATOR,AUTHOR'
-        : undefined,
-  ),
-};
 
 function makeCtx(headers: Record<string, string> = {}): ExecutionContext {
   const req = { headers, adminUser: undefined, adminClient: undefined };
@@ -47,7 +37,8 @@ describe('BastionUserGuard', () => {
         BastionUserGuard,
         { provide: BastionJwksService, useValue: mockJwks },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ConfigService, useValue: mockConfig },
+        { provide: BASTION_OPTIONS, useValue: { baseUrl: 'http://bastion', serviceSlug: 'gatherly', acceptedAppSlugs: ['gatherly', 'meridian'], acceptedRoles: ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'MODERATOR', 'AUTHOR'] } },
+        { provide: BastionAuditService, useValue: { write: jest.fn() } },
       ],
     }).compile();
 

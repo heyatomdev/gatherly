@@ -25,18 +25,32 @@ class EnvironmentVariables {
   LOG_LEVEL: LogLevel = LogLevel.Info;
 
   @IsNumber()
-  PORT: number = 3001;
+  PORT: number = 3000;
 
   @IsString()
   DATABASE_URL!: string;
 
+  // pg pool behind the Prisma adapter (see PrismaService).
   @IsOptional()
-  @IsString()
-  CORS_ORIGINS: string = 'http://localhost:3000';
+  @IsNumber()
+  DATABASE_POOL_MAX: number = 10;
+
+  @IsOptional()
+  @IsNumber()
+  DATABASE_CONNECTION_TIMEOUT_MS: number = 5_000;
+
+  @IsOptional()
+  @IsNumber()
+  DATABASE_STATEMENT_TIMEOUT_MS: number = 30_000;
+
+  // Prometheus /metrics listener — internal network only, never published or proxied.
+  @IsOptional()
+  @IsNumber()
+  METRICS_PORT: number = 9091;
 
   @IsOptional()
   @IsString()
-  APP_BASE_URL?: string;
+  CORS_ORIGINS: string = 'http://localhost:3000';
 
   @IsOptional()
   @IsNumber()

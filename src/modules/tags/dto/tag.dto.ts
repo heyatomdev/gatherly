@@ -22,10 +22,3 @@ export class UpdateTagDto {
   @IsObject()
   label?: Record<string, string>;
 }
-
-export class TagResponseDto {
-  id: string;
-  clientId: string;
-  slug: string;
-  label?: Record<string, string>;
-}

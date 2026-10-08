@@ -25,7 +25,7 @@ Multi-tenant event manager built with NestJS 10, Prisma ORM, and PostgreSQL.
 ### 1. Installa dipendenze
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. Configura il database
@@ -38,14 +38,14 @@ cp .env.example .env
 ### 3. Esegui le migrazioni
 
 ```bash
-npm run prisma:migrate
-npm run prisma:generate
+pnpm prisma:migrate
+pnpm prisma:generate
 ```
 
 ### 4. Avvia l'applicazione
 
 ```bash
-npm run start:dev
+pnpm start:dev
 ```
 
 L'app sarà disponibile su `http://localhost:3000`
@@ -54,40 +54,17 @@ L'app sarà disponibile su `http://localhost:3000`
 
 ### Clients
 
-#### Crea un nuovo client
-```bash
-POST /clients
-Content-Type: application/json
-
-{
-  "name": "My Event Company"
-}
-```
-
-Risposta:
-```json
-{
-  "id": "cluxxxxxx",
-  "name": "My Event Company",
-  "token": "Y2x1exxxxxx"
-}
-```
-
-#### Ottieni tutti i client
-```bash
-GET /clients
-```
-
----
+Nessun endpoint pubblico per i client. Li crea un SUPER_ADMIN da Meridian → Gatherly → Clients
+(`/admin/clients`, Bastion user JWT con ruolo SUPER_ADMIN). Ogni client è legato a un `tenantId` Bastion.
 
 ### Events
 
-Tutti gli endpoint degli eventi richiedono l'header: `x-client-token: <token>`
+Tutti gli endpoint degli eventi richiedono un service-client JWT Bastion: `Authorization: Bearer <jwt>`
 
 #### Crea un evento
 ```bash
 POST /events
-Headers: x-client-token: <token>
+Headers: Authorization: Bearer <jwt>
 Content-Type: application/json
 
 {
@@ -121,19 +98,19 @@ Risposta:
 #### Ottieni tutti gli eventi del client
 ```bash
 GET /events
-Headers: x-client-token: <token>
+Headers: Authorization: Bearer <jwt>
 ```
 
 #### Ottieni un evento specifico
 ```bash
 GET /events/:eventId
-Headers: x-client-token: <token>
+Headers: Authorization: Bearer <jwt>
 ```
 
 #### Aggiungi un partecipante
 ```bash
 POST /events/:eventId/participants
-Headers: x-client-token: <token>
+Headers: Authorization: Bearer <jwt>
 Content-Type: application/json
 
 {
@@ -145,7 +122,7 @@ Content-Type: application/json
 #### Rimuovi un partecipante
 ```bash
 DELETE /events/:eventId/participants/:userId
-Headers: x-client-token: <token>
+Headers: Authorization: Bearer <jwt>
 ```
 
 ## Esempi di RRULE
@@ -182,10 +159,12 @@ Event (Parent) ---< (Child) Event (per ricorrenze)
 
 ### Flusso di Autenticazione
 
-1. Client invia `x-client-token` nell'header
-2. `ClientAuthGuard` verifica il token
+1. Il chiamante ottiene un service-client JWT da Bastion (`POST /auth/client`) e lo invia come `Authorization: Bearer <jwt>`
+2. `BastionJwtGuard` (globale) verifica la firma RS256 via JWKS e risolve il client attivo legato al `tenantId` del token
 3. Request viene arricchita con `req.client` contenente i dati del client
 4. Tutti i servizi filtrano i dati per `clientId`
+
+Le route `/admin/*` usano invece un Bastion user JWT, verificato dai guard dei singoli controller.
 
 ### Gestione Ricorrenze
 
@@ -200,45 +179,42 @@ Event (Parent) ---< (Child) Event (per ricorrenze)
 
 ```bash
 # Avvia in modalità development con watch
-npm run start:dev
+pnpm start:dev
 
 # Build per production
-npm run build
+pnpm build
 
 # Esegui migrazioni Prisma
-npm run prisma:migrate
+pnpm prisma:migrate
 
 # Genera Prisma Client
-npm run prisma:generate
+pnpm prisma:generate
 ```
 
 ### Struttura dei file
 
 ```
 src/
-├── app.module.ts          # Modulo principale
-├── index.ts              # Entry point
-├── clients/              # Modulo client
-│   ├── client.module.ts
-│   ├── client.controller.ts
-│   └── client.service.ts
-├── events/               # Modulo events
-│   ├── event.module.ts
-│   ├── event.controller.ts
-│   ├── event.service.ts
-│   └── dto/
-│       └── event.dto.ts
-├── guards/               # Guards
-│   └── client-auth.guard.ts
-└── prisma/               # Servizi Prisma
-    └── prisma.service.ts
+├── main.ts               # Entry point
+├── configs/              # Validazione env (config.validation.ts)
+├── guards/               # AdminThrottlerGuard
+└── modules/
+    ├── app/              # AppModule
+    ├── bastion/          # JWKS, BastionJwtGuard, guard admin
+    ├── admin/            # /admin/* (Meridian)
+    ├── clients/          # ClientService (niente controller)
+    ├── events/           # Eventi, partecipanti, ricorrenze
+    ├── categories/
+    ├── tags/
+    ├── webhook/          # Outbox + delivery webhook
+    └── prisma/           # PrismaService (@Global)
 ```
 
 ## Troubleshooting
 
 ### Errore: "Prisma Client not generated"
 ```bash
-npm run prisma:generate
+pnpm prisma:generate
 ```
 
 ### Errore: "Database connection failed"
@@ -247,10 +223,10 @@ Verifica che:
 - L'URL di connessione in `.env` sia corretta
 - I permessi del database siano corretti
 
-### Errore: "Token non valido"
-Assicurati di:
-- Aver creato un client con `POST /clients`
-- Usare il token corretto nell'header `x-client-token`
+### Errore 401 "Client non autorizzato"
+Assicurati che:
+- Esista un client attivo per il `tenantId` del JWT (creato da Meridian → Gatherly → Clients)
+- Il JWT sia un service-client token Bastion valido, inviato come `Authorization: Bearer <jwt>`
 
 ## License
 
