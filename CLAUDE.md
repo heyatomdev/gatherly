@@ -315,11 +315,21 @@ Client sets `webhookUrl` on their record. `WebhookService` sends POST to that UR
 
 Event types: `event.created`, `event.updated`, `event.cancelled`, `event.published`, `event.completed`, `participant.joined`, `participant.status_changed`, `participant.removed`, `participant.checked_in`.
 
-`webhook.helper.ts` has `formatEventForWebhook(event, locale?)` and `formatParticipantForWebhook(participant, locale?)` — both accept an optional locale, fall back to first available translation.
+All nine are emitted from `EventService` (not controllers), so the tenant API
+and `/admin/events` both fire them. Single entry point:
+`WebhookService.notify(clientId, type, item | item[], extra?)` — looks up the
+client's `webhookUrl` (no-op if unset) and builds the payload itself via
+`formatEventForWebhook` / `formatParticipantForWebhook`. Event payloads never
+carry participants; participant payloads carry no `email`/`notes`/`metadata`
+(tenant fetches the row by id if needed). `participant.status_changed` has
+`previousStatus`, and also fires when a waitlisted participant is promoted.
+Bulk add emits one `participant.joined` per created row. The 2AM cron's
+auto-complete of recurring children emits nothing.
 
-Webhook failures are caught and logged — they never break the main operation.
+Emission is fire-and-forget (`this.emit(...)` → `.catch(logger.warn)`) and runs
+after the DB transaction commits — webhook failures never break the main operation.
 
-Delivery is an outbox: `enqueue()` writes a `WebhookDelivery` row, the
+Delivery is an outbox: `notify()` writes `WebhookDelivery` rows, the
 `processQueue` cron (every minute) sends it. Rows are **claimed** before
 sending by `claimDue()` — one `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE
 SKIP LOCKED) RETURNING id` that pushes `nextRetryAt` forward by
@@ -332,6 +342,9 @@ Leased rows have `nextRetryAt` in the future, so they don't count toward
 `gatherly_webhook_deliveries_overdue` while in flight. Never read the queue
 with a plain `findMany` — that's how double sends happened.
 
+`cleanupDeliveries` (weekly) deletes `DELIVERED` rows older than 30 days and
+`FAILED` rows older than 90 days.
+
 ---
 
 ## Prisma Notes
@@ -341,6 +354,10 @@ with a plain `findMany` — that's how double sends happened.
 - `RecurrenceRule` is unscoped (no `clientId`) — it's a pure config object.
 - `Tag.slug` is auto-lowercased at service level before DB write.
 - `EventTag` is an explicit junction model (not implicit many-to-many) — cannot use Prisma's `connect`/`set` shorthand. Use `deleteMany` + `createMany` to replace tags.
+- `participants_email_norm_idx` is an expression index on `lower(trim(email))` (People/analytics match on that), created in raw SQL in `20261008090000_perf_indexes` — Prisma can't model it and ignores it in diffs. Don't add a plain `@@index([email])` back.
+- Capacity (`maxParticipants`) is enforced under a row lock: every participant write that can change the active count (`addParticipant`, bulk, `removeParticipant`, `updateParticipantStatus`) starts its transaction with `lockEvent()` (`SELECT ... FROM events WHERE id AND clientId FOR UPDATE`), then counts. No Serializable isolation, no retries needed. New writes of that kind must do the same.
+- Event list/detail return `_count.participants` (active = REGISTERED + CONFIRMED), never the participant rows — use `GET /events/:id/participants` (paginated). Detail's `childEvents` is `{ id, startTime, status, _count }`, first 100 by `startTime`.
+- pg pool: `DATABASE_POOL_MAX` (10), `DATABASE_CONNECTION_TIMEOUT_MS` (5000), `DATABASE_STATEMENT_TIMEOUT_MS` (30000), read by `PrismaService`.
 
 ---
 
@@ -358,7 +375,17 @@ with a plain `findMany` — that's how double sends happened.
 
 ## Cron Jobs
 
-`EventService.cleanupPastEvents` — runs at 2AM daily. Deletes child recurring events (`parentEventId != null`) whose `startTime` is in the past.
+All crons run on every replica, so each one that writes takes a
+transaction-scoped advisory lock via `PrismaService.withAdvisoryLock(name, fn)`
+(`pg_try_advisory_xact_lock`); losers skip that tick.
+
+- `EventService.cleanupPastEvents` — 2AM daily. Marks past `DRAFT`/`PUBLISHED`
+  recurring children (`parentEventId != null`) `COMPLETED`. **Never deletes
+  events**: deleting cascaded to `Participant` and wiped the history that
+  analytics, People history and VIP/at-risk depend on.
+- `EventService.cleanupExpiredIdempotencyKeys` — hourly.
+- `WebhookService.cleanupDeliveries` — weekly (see Webhook).
+- `WebhookService.processQueue` — every minute; uses `SKIP LOCKED` claims instead of the advisory lock.
 
 ---
 

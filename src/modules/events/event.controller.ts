@@ -15,7 +15,6 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { EventService } from './event.service';
-import { WebhookService } from '../webhook/webhook.service';
 import { IdempotencyInterceptor } from '@/common/idempotency.interceptor';
 import {
   CreateEventDto,
@@ -30,10 +29,7 @@ import {
 @ApiTags('events')
 @Controller('events')
 export class EventController {
-  constructor(
-    private eventService: EventService,
-    private webhookService: WebhookService,
-  ) {}
+  constructor(private eventService: EventService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -84,9 +80,7 @@ export class EventController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Publish event — validates required fields, transitions DRAFT → PUBLISHED' })
   async publishEvent(@Request() req, @Param('eventId') eventId: string) {
-    const event = await this.eventService.publishEvent(eventId, req.client.id);
-    await this.webhookService.notifyEventPublished(req.client.webhookUrl, req.client.id, event);
-    return event;
+    return this.eventService.publishEvent(eventId, req.client.id);
   }
 
   @Put(':eventId/complete')
@@ -99,9 +93,7 @@ export class EventController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancel event — blocks further status changes. Cancels future recurring children.' })
   async cancelEvent(@Request() req, @Param('eventId') eventId: string) {
-    const event = await this.eventService.cancelEvent(eventId, req.client.id);
-    await this.webhookService.notifyEventCancelled(req.client.webhookUrl, req.client.id, event);
-    return event;
+    return this.eventService.cancelEvent(eventId, req.client.id);
   }
 
   @Post(':eventId/participants')

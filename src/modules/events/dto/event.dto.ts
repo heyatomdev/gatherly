@@ -96,7 +96,9 @@ export class CreateEventDto {
   @ApiPropertyOptional({ type: [String], description: 'Tag slugs — created if not exist' })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @IsString({ each: true })
+  @MaxLength(50, { each: true })
   tagSlugs?: string[];
 
   @ApiPropertyOptional()
@@ -179,7 +181,9 @@ export class UpdateEventDto {
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(20)
   @IsString({ each: true })
+  @MaxLength(50, { each: true })
   tagSlugs?: string[];
 
   @ApiPropertyOptional()

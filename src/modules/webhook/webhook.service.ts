@@ -4,7 +4,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHmac } from 'crypto';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { WebhookEventType, EventWebhookPayload, ParticipantWebhookPayload } from './dto/webhook-event.dto';
+import { formatEventForWebhook, formatParticipantForWebhook } from './webhook.helper';
+import { WebhookEventType } from './dto/webhook-event.dto';
 
 /** Rows claimed per queue tick — see `claimDue`. */
 export const QUEUE_BATCH_SIZE = 50;
@@ -14,6 +15,10 @@ export const QUEUE_BATCH_SIZE = 50;
  * exceed the 10s HTTP timeout in `attempt()`.
  */
 export const CLAIM_LEASE_MINUTES = 5;
+
+const DELIVERED_RETENTION_DAYS = 30;
+/** Kept longer than DELIVERED so tenants can inspect and manually retry. */
+const FAILED_RETENTION_DAYS = 90;
 
 @Injectable()
 export class WebhookService {
@@ -26,23 +31,6 @@ export class WebhookService {
 
   private signPayload(secret: string, body: string): string {
     return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
-  }
-
-  async enqueue(
-    clientId: string,
-    webhookUrl: string | null | undefined,
-    payload: EventWebhookPayload | ParticipantWebhookPayload,
-  ): Promise<void> {
-    if (!webhookUrl) return;
-
-    await this.prisma.webhookDelivery.create({
-      data: {
-        clientId,
-        webhookUrl,
-        eventType: payload.event,
-        payload: payload as any,
-      },
-    });
   }
 
   @Cron('* * * * *')
@@ -136,10 +124,19 @@ export class WebhookService {
 
   @Cron(CronExpression.EVERY_WEEK)
   async cleanupDeliveries(): Promise<void> {
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    await this.prisma.webhookDelivery.deleteMany({
-      where: { status: 'DELIVERED', updatedAt: { lt: cutoff } },
-    });
+    const day = 24 * 60 * 60 * 1000;
+    const delivered = new Date(Date.now() - DELIVERED_RETENTION_DAYS * day);
+    const failed = new Date(Date.now() - FAILED_RETENTION_DAYS * day);
+    await this.prisma.withAdvisoryLock('webhook.cleanupDeliveries', (tx) =>
+      tx.webhookDelivery.deleteMany({
+        where: {
+          OR: [
+            { status: 'DELIVERED', updatedAt: { lt: delivered } },
+            { status: 'FAILED', updatedAt: { lt: failed } },
+          ],
+        },
+      }),
+    );
   }
 
   async retryDelivery(deliveryId: string, clientId: string): Promise<void> {
@@ -156,121 +153,35 @@ export class WebhookService {
     });
   }
 
-  async notifyEventCreated(
-    webhookUrl: string | null | undefined,
+  /**
+   * Enqueues one delivery per item for the client's webhookUrl (no-op when
+   * unset). Payloads are always built here from the trimmed formatters, so no
+   * caller can leak participant lists or contact data.
+   */
+  async notify(
     clientId: string,
-    eventData: any,
+    type: WebhookEventType,
+    items: any | any[],
+    extra?: Record<string, unknown>,
   ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.EVENT_CREATED,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: eventData,
-    });
-  }
+    const list = Array.isArray(items) ? items : [items];
+    if (!list.length) return;
 
-  async notifyEventUpdated(
-    webhookUrl: string | null | undefined,
-    clientId: string,
-    eventData: any,
-  ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.EVENT_UPDATED,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: eventData,
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+      select: { webhookUrl: true },
     });
-  }
+    if (!client?.webhookUrl) return;
 
-  async notifyEventCancelled(
-    webhookUrl: string | null | undefined,
-    clientId: string,
-    eventData: any,
-  ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.EVENT_CANCELLED,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: eventData,
-    });
-  }
-
-  async notifyEventPublished(
-    webhookUrl: string | null | undefined,
-    clientId: string,
-    eventData: any,
-  ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.EVENT_PUBLISHED,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: eventData,
-    });
-  }
-
-  async notifyEventCompleted(
-    webhookUrl: string | null | undefined,
-    clientId: string,
-    eventData: any,
-  ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.EVENT_COMPLETED,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: eventData,
-    });
-  }
-
-  async notifyParticipantJoined(
-    webhookUrl: string | null | undefined,
-    clientId: string,
-    participantData: any,
-  ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.PARTICIPANT_JOINED,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: participantData,
-    });
-  }
-
-  async notifyParticipantStatusChanged(
-    webhookUrl: string | null | undefined,
-    clientId: string,
-    participantData: any,
-    previousStatus?: string,
-  ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.PARTICIPANT_STATUS_CHANGED,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: { ...participantData, previousStatus },
-    });
-  }
-
-  async notifyParticipantRemoved(
-    webhookUrl: string | null | undefined,
-    clientId: string,
-    participantData: any,
-  ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.PARTICIPANT_REMOVED,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: participantData,
-    });
-  }
-
-  async notifyParticipantCheckedIn(
-    webhookUrl: string | null | undefined,
-    clientId: string,
-    participantData: any,
-  ): Promise<void> {
-    await this.enqueue(clientId, webhookUrl, {
-      event: WebhookEventType.PARTICIPANT_CHECKED_IN,
-      timestamp: new Date().toISOString(),
-      clientId,
-      data: participantData,
+    const format = type.startsWith('event.') ? formatEventForWebhook : formatParticipantForWebhook;
+    const timestamp = new Date().toISOString();
+    await this.prisma.webhookDelivery.createMany({
+      data: list.map((item) => ({
+        clientId,
+        webhookUrl: client.webhookUrl!,
+        eventType: type,
+        payload: { event: type, timestamp, clientId, data: { ...format(item), ...extra } },
+      })),
     });
   }
 }

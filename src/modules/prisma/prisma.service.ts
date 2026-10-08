@@ -1,16 +1,42 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
 
-  constructor() {
+  constructor(config: ConfigService) {
     const adapter = new PrismaPg({
-      connectionString: process.env.DATABASE_URL as string,
+      connectionString: config.get<string>('DATABASE_URL'),
+      max: config.get<number>('DATABASE_POOL_MAX', 10),
+      connectionTimeoutMillis: config.get<number>('DATABASE_CONNECTION_TIMEOUT_MS', 5_000),
+      statement_timeout: config.get<number>('DATABASE_STATEMENT_TIMEOUT_MS', 30_000),
     });
     super({ adapter });
+  }
+
+  /**
+   * Runs `fn` only on the replica that wins a transaction-scoped advisory
+   * lock named `name`; the others skip. Transaction-scoped (not session) so
+   * the lock can't leak onto a pooled connection. Returns false if skipped.
+   */
+  async withAdvisoryLock(
+    name: string,
+    fn: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  ): Promise<boolean> {
+    return this.$transaction(
+      async (tx) => {
+        const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
+          SELECT pg_try_advisory_xact_lock(hashtext(${name})) AS locked
+        `;
+        if (!locked) return false;
+        await fn(tx);
+        return true;
+      },
+      { timeout: 120_000 },
+    );
   }
 
   async onModuleInit() {

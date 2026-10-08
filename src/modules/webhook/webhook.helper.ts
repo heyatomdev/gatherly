@@ -6,10 +6,6 @@ type EventWithRelations = Event & {
   tags?: { tag: { slug: string } }[];
 };
 
-type ParticipantWithEvent = Participant & {
-  event?: { translations?: { locale: string; title: string }[] } | null;
-};
-
 function pickTranslation<T extends { locale: string }>(
   items: T[] | undefined,
   locale: string,
@@ -52,36 +48,19 @@ export function formatEventForWebhook(event: EventWithRelations, locale?: string
   };
 }
 
-export function formatParticipantForWebhook(participant: ParticipantWithEvent, locale?: string): any {
-  const l = locale ?? 'it';
-  const eventTitle = pickTranslation(participant.event?.translations ?? [], l)?.title ?? 'Unknown Event';
-
+// No email/notes/metadata: the tenant can fetch the full row by id if it needs it.
+export function formatParticipantForWebhook(participant: Participant): any {
   return {
     id: participant.id,
     eventId: participant.eventId,
-    eventTitle,
     type: participant.type,
     userName: participant.userName,
-    email: participant.email,
     externalId: participant.externalId,
     externalSource: participant.externalSource,
     status: participant.status,
     role: participant.role,
-    notes: participant.notes,
     checkedIn: participant.checkedIn,
     checkedInAt: participant.checkedInAt,
     createdAt: participant.createdAt,
   };
-}
-
-export function enrichEventData(event: EventWithRelations, locale?: string, additionalData?: Record<string, any>) {
-  return { ...formatEventForWebhook(event, locale), ...additionalData };
-}
-
-export function enrichParticipantData(
-  participant: ParticipantWithEvent,
-  locale?: string,
-  additionalData?: Record<string, any>,
-) {
-  return { ...formatParticipantForWebhook(participant, locale), ...additionalData };
 }

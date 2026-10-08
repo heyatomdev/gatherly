@@ -2,6 +2,7 @@ import { of, throwError } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { CLAIM_LEASE_MINUTES, QUEUE_BATCH_SIZE, WebhookService } from './webhook.service';
+import { WebhookEventType } from './dto/webhook-event.dto';
 
 describe('WebhookService queue', () => {
   const prisma = {
@@ -90,5 +91,61 @@ describe('WebhookService queue', () => {
       status: 'FAILED',
       nextRetryAt: undefined,
     });
+  });
+});
+
+describe('WebhookService notify/cleanup', () => {
+  const prisma = {
+    client: { findUnique: jest.fn() },
+    webhookDelivery: { createMany: jest.fn(), deleteMany: jest.fn() },
+    withAdvisoryLock: jest.fn(async (_name: string, fn: any) => fn(prisma)),
+  };
+  const service = new WebhookService({} as HttpService, prisma as unknown as PrismaService);
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('sends trimmed event and participant payloads without contact data', async () => {
+    prisma.client.findUnique.mockResolvedValue({ webhookUrl: 'https://example.test/hook' });
+
+    await service.notify('c1', WebhookEventType.EVENT_PUBLISHED, {
+      id: 'e1',
+      defaultLocale: 'it',
+      translations: [{ locale: 'it', title: 'Torneo' }],
+      tags: [{ tag: { slug: '5v5' } }],
+      participants: [{ id: 'p1', email: 'mario@example.com' }],
+    });
+    await service.notify(
+      'c1',
+      WebhookEventType.PARTICIPANT_STATUS_CHANGED,
+      [{ id: 'p1', eventId: 'e1', userName: 'Mario', email: 'mario@example.com', notes: 'vip', status: 'REGISTERED' }],
+      { previousStatus: 'WAITLIST' },
+    );
+
+    const event = prisma.webhookDelivery.createMany.mock.calls[0][0].data[0];
+    expect(event).toMatchObject({ clientId: 'c1', eventType: 'event.published' });
+    expect(event.payload.data).toMatchObject({ id: 'e1', title: 'Torneo', tags: ['5v5'] });
+
+    const participant = prisma.webhookDelivery.createMany.mock.calls[1][0].data[0].payload.data;
+    expect(participant).toMatchObject({ id: 'p1', status: 'REGISTERED', previousStatus: 'WAITLIST' });
+
+    const all = JSON.stringify(prisma.webhookDelivery.createMany.mock.calls);
+    expect(all).not.toContain('mario@example.com');
+    expect(all).not.toContain('vip');
+  });
+
+  it('enqueues nothing when the client has no webhookUrl', async () => {
+    prisma.client.findUnique.mockResolvedValue({ webhookUrl: null });
+
+    await service.notify('c1', WebhookEventType.EVENT_CREATED, { id: 'e1' });
+
+    expect(prisma.webhookDelivery.createMany).not.toHaveBeenCalled();
+  });
+
+  it('cleans up old DELIVERED and FAILED rows under an advisory lock', async () => {
+    await service.cleanupDeliveries();
+
+    expect(prisma.withAdvisoryLock).toHaveBeenCalledWith('webhook.cleanupDeliveries', expect.any(Function));
+    const { where } = prisma.webhookDelivery.deleteMany.mock.calls[0][0];
+    expect(where.OR.map((c: any) => c.status)).toEqual(['DELIVERED', 'FAILED']);
   });
 });

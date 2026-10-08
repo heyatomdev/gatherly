@@ -127,7 +127,6 @@ model Event {
   participants Participant[]
   tags         EventTag[]
 
-  @@index([clientId])
   @@index([clientId, startTime])
   @@index([categoryId])
   @@index([parentEventId])
@@ -145,7 +144,6 @@ model EventTranslation {
   description String?
 
   @@unique([eventId, locale])
-  @@index([eventId])
   @@index([locale])
   @@map("event_translations")
 }
@@ -162,7 +160,6 @@ model Tag {
   events EventTag[]
 
   @@unique([clientId, slug])
-  @@index([clientId])
   @@map("tags")
 }
 
@@ -173,6 +170,7 @@ model EventTag {
   tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([eventId, tagId])
+  @@index([tagId])
   @@map("event_tags")
 }
 
@@ -210,10 +208,11 @@ model Participant {
   // Unique: un utente esterno unico per evento+source
   // Per INLINE usiamo solo id (no unique su email, può partecipare più volte con ruoli diversi)
   @@unique([eventId, externalId, externalSource])
-  @@index([eventId])
-  @@index([externalId])
-  @@index([email])
-  @@index([status])
+  @@index([eventId, status, createdAt])
+  @@index([externalId, externalSource])
+  // Email lookups go through an expression index on lower(trim(email))
+  // (participants_email_norm_idx) created in raw SQL — Prisma can't model
+  // expression indexes. Don't let `migrate dev` drop it.
   @@map("participants")
 }
 
@@ -265,7 +264,7 @@ model WebhookDelivery {
   updatedAt   DateTime              @updatedAt
 
   @@index([status, nextRetryAt])
-  @@index([clientId])
+  @@index([clientId, createdAt])
   @@map("webhook_deliveries")
 }
 

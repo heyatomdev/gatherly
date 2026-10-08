@@ -30,6 +30,19 @@ class EnvironmentVariables {
   @IsString()
   DATABASE_URL!: string;
 
+  // pg pool behind the Prisma adapter (see PrismaService).
+  @IsOptional()
+  @IsNumber()
+  DATABASE_POOL_MAX: number = 10;
+
+  @IsOptional()
+  @IsNumber()
+  DATABASE_CONNECTION_TIMEOUT_MS: number = 5_000;
+
+  @IsOptional()
+  @IsNumber()
+  DATABASE_STATEMENT_TIMEOUT_MS: number = 30_000;
+
   // Prometheus /metrics listener — internal network only, never published or proxied.
   @IsOptional()
   @IsNumber()
