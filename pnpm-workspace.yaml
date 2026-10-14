@@ -5,6 +5,10 @@ allowBuilds:
   '@scarf/scarf': false
   '@prisma/engines': true
   prisma: true
+  # testcontainers' optional native SSH deps — not needed for a local Docker socket
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
 
 overrides:
   proxy-addr: '>=2.0.8'

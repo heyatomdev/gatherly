@@ -74,6 +74,9 @@ pnpm build            # compile to dist/
 pnpm prisma:studio    # Prisma GUI
 pnpm prisma:migrate   # run migrations
 pnpm lint             # ESLint fix
+pnpm test             # unit (mocked Prisma)
+pnpm test:e2e         # HTTP e2e, mocked Prisma
+pnpm test:int         # real Postgres via Testcontainers (Docker required) + prisma migrate deploy
 ```
 
 ---
@@ -261,7 +264,18 @@ Domain-specific data via `metadata`:
 { "userName": "Team A", "metadata": { "team": "Red", "seed": 3, "rank": "Diamond" } }
 ```
 
-Waitlist is automatic: if `maxParticipants` reached, status becomes `WAITLIST`. Cancelling a participant promotes the first waitlisted.
+Waitlist is automatic: if `maxParticipants` reached, status becomes `WAITLIST`. Cancelling a participant promotes the first waitlisted. Raising `maxParticipants` via `PATCH /events/:id` (or setting it to `null`) promotes waitlisted participants, oldest first, into every freed seat — one `participant.status_changed` each.
+
+**Registration rules** (`addParticipant` and bulk, tenant and `/admin` alike — no admin bypass): the event must be `PUBLISHED` and not yet over (`endTime`, or `startTime` when there is no `endTime`, still in the future). Otherwise `409`; bulk rejects the whole batch. Checked inside the locked transaction (`assertAcceptsRegistrations`).
+
+**Seats**: `REGISTERED`, `CONFIRMED` and `ATTENDED` all take a seat (`ACTIVE_STATUSES`). Check-in must not free a seat, or the event overbooks while people are in the room. `PUT .../checkin` works only from `REGISTERED`/`CONFIRMED` (under `lockEvent()`); already `ATTENDED` returns the row unchanged with no webhook; `WAITLIST`/`CANCELLED` → `409`. `PATCH .../status` to `ATTENDED` from `WAITLIST` goes through the normal capacity check.
+
+### Event status is not patchable
+
+`UpdateEventDto` has no `status` — `PATCH /events/:id` with `status` is a `400`
+(`forbidNonWhitelisted`). Transitions only via `PUT /events/:id/publish`,
+`/cancel`, `/complete`, which validate (publish: title + future start), cascade
+(cancel: future recurring children), audit and emit the right webhook.
 
 ### Updating tags on an event
 
@@ -402,8 +416,8 @@ now fail delivery until updated.
 - `Tag.slug` is auto-lowercased at service level before DB write.
 - `EventTag` is an explicit junction model (not implicit many-to-many) — cannot use Prisma's `connect`/`set` shorthand. Use `deleteMany` + `createMany` to replace tags.
 - `participants_email_norm_idx` is an expression index on `lower(trim(email))` (People/analytics match on that), created in raw SQL in `20261008090000_perf_indexes` — Prisma can't model it and ignores it in diffs. Don't add a plain `@@index([email])` back.
-- Capacity (`maxParticipants`) is enforced under a row lock: every participant write that can change the active count (`addParticipant`, bulk, `removeParticipant`, `updateParticipantStatus`) starts its transaction with `lockEvent()` (`SELECT ... FROM events WHERE id AND clientId FOR UPDATE`), then counts. No Serializable isolation, no retries needed. New writes of that kind must do the same.
-- Event list/detail return `_count.participants` (active = REGISTERED + CONFIRMED), never the participant rows — use `GET /events/:id/participants` (paginated). Detail's `childEvents` is `{ id, startTime, status, _count }`, first 100 by `startTime`.
+- Capacity (`maxParticipants`) is enforced under a row lock: every participant write that can change the active count (`addParticipant`, bulk, `removeParticipant`, `updateParticipantStatus`, `checkInParticipant`, and `updateEvent` for waitlist promotion) starts its transaction with `lockEvent()` (`SELECT ... FROM events WHERE id AND clientId FOR UPDATE`), then counts. No Serializable isolation, no retries needed. New writes of that kind must do the same.
+- Event list/detail return `_count.participants` (active = REGISTERED + CONFIRMED + ATTENDED), never the participant rows — use `GET /events/:id/participants` (paginated). Detail's `childEvents` is `{ id, startTime, status, _count }`, first 100 by `startTime`.
 - pg pool: `DATABASE_POOL_MAX` (10), `DATABASE_CONNECTION_TIMEOUT_MS` (5000), `DATABASE_STATEMENT_TIMEOUT_MS` (30000), read by `PrismaService`.
 
 ---

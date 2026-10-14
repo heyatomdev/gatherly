@@ -24,8 +24,22 @@ import {
 } from './dto/event.dto';
 import { PaginatedResult, paginate } from '@/common/pagination';
 
-/** Statuses that take a seat against maxParticipants. */
-const ACTIVE_STATUSES: ('REGISTERED' | 'CONFIRMED')[] = ['REGISTERED', 'CONFIRMED'];
+/**
+ * Statuses that take a seat against maxParticipants. ATTENDED counts: a
+ * checked-in participant is still in the room, so check-in must not free a seat.
+ */
+const ACTIVE_STATUSES: ('REGISTERED' | 'CONFIRMED' | 'ATTENDED')[] = ['REGISTERED', 'CONFIRMED', 'ATTENDED'];
+
+/** Statuses a participant can be checked in from (ATTENDED is an idempotent no-op). */
+const CHECKIN_STATUSES = ['REGISTERED', 'CONFIRMED'];
+
+type LockedEvent = {
+  id: string;
+  status: string;
+  startTime: Date;
+  endTime: Date | null;
+  maxParticipants: number | null;
+};
 
 /** Seats taken, instead of loading every participant row. */
 const ACTIVE_COUNT = {
@@ -117,13 +131,26 @@ export class EventService {
    * capacity checks on the same event serialize instead of overbooking.
    */
   private async lockEvent(tx: Prisma.TransactionClient, eventId: string, clientId: string) {
-    const [event] = await tx.$queryRaw<{ id: string; maxParticipants: number | null }[]>`
-      SELECT id, "maxParticipants" FROM events
+    const [event] = await tx.$queryRaw<LockedEvent[]>`
+      SELECT id, status, "startTime", "endTime", "maxParticipants" FROM events
        WHERE id = ${eventId} AND "clientId" = ${clientId}
          FOR UPDATE
     `;
     if (!event) throw new NotFoundException('Event not found');
     return event;
+  }
+
+  /**
+   * Registrations (tenant and admin alike) only go to PUBLISHED events that
+   * haven't ended yet — endTime, or startTime when there is none.
+   */
+  private assertAcceptsRegistrations(event: LockedEvent) {
+    if (event.status !== 'PUBLISHED') {
+      throw new ConflictException(`Event is ${event.status}, not open for registration`);
+    }
+    if ((event.endTime ?? event.startTime) <= new Date()) {
+      throw new ConflictException('Event has already ended, not open for registration');
+    }
   }
 
   private countActive(tx: Prisma.TransactionClient, eventId: string) {
@@ -342,11 +369,12 @@ export class EventService {
   async updateEvent(eventId: string, clientId: string, data: UpdateEventDto) {
     const { translations, tagSlugs, ...scalarData } = data;
 
-    const status = await this.findStatus(eventId, clientId);
-    if (scalarData.status) this.assertTransition(status, scalarData.status);
     await this.assertCategory(clientId, scalarData.categoryId);
 
-    const event = await this.prisma.$transaction(async (tx) => {
+    const { event, promoted } = await this.prisma.$transaction(async (tx) => {
+      // Also the tenant check: the writes below are keyed by id alone.
+      const locked = await this.lockEvent(tx, eventId, clientId);
+
       for (const t of translations ?? []) {
         await tx.eventTranslation.upsert({
           where: { eventId_locale: { eventId, locale: t.locale } },
@@ -363,7 +391,7 @@ export class EventService {
         }
       }
 
-      return tx.event.update({
+      const event = await tx.event.update({
         where: { id: eventId },
         data: {
           ...scalarData,
@@ -372,9 +400,20 @@ export class EventService {
         },
         include: EVENT_INCLUDE,
       });
+
+      // More seats (or no cap at all): fill them from the waitlist.
+      const raised =
+        scalarData.maxParticipants !== undefined &&
+        locked.maxParticipants != null &&
+        (event.maxParticipants == null || event.maxParticipants > locked.maxParticipants);
+      const promoted = raised
+        ? await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants)
+        : [];
+      return { event, promoted };
     });
 
     this.emit(clientId, WebhookEventType.EVENT_UPDATED, event);
+    this.emitPromoted(clientId, promoted);
     return event;
   }
 
@@ -484,6 +523,7 @@ export class EventService {
     try {
       const participant = await this.prisma.$transaction(async (tx) => {
         const event = await this.lockEvent(tx, eventId, clientId);
+        this.assertAcceptsRegistrations(event);
         const full =
           event.maxParticipants != null &&
           (await this.countActive(tx, eventId)) >= event.maxParticipants;
@@ -527,6 +567,7 @@ export class EventService {
 
     const created = await this.prisma.$transaction(async (tx) => {
       const event = await this.lockEvent(tx, eventId, clientId);
+      this.assertAcceptsRegistrations(event);
       let activeCount = await this.countActive(tx, eventId);
 
       // The unique key is (eventId, externalId, externalSource): dedupe against
@@ -594,7 +635,7 @@ export class EventService {
         where: { id: participantId },
         data: { status: 'CANCELLED' },
       });
-      const promoted = await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants);
+      const promoted = await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants, 1);
       return { participant, promoted };
     });
 
@@ -634,8 +675,8 @@ export class EventService {
       });
       const promoted =
         status === 'CANCELLED'
-          ? await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants)
-          : null;
+          ? await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants, 1)
+          : [];
       return { result, previousStatus: participant.status, promoted };
     });
 
@@ -646,20 +687,31 @@ export class EventService {
     return result;
   }
 
+  /**
+   * REGISTERED/CONFIRMED → ATTENDED. Already ATTENDED returns the row as-is (no
+   * webhook); WAITLIST/CANCELLED are refused — they hold no seat, and checking
+   * them in would put someone in the room past maxParticipants.
+   */
   async checkInParticipant(participantId: string, eventId: string, clientId: string) {
-    const participant = await this.prisma.participant.findFirst({
-      where: { id: participantId, eventId, event: { clientId } },
-      select: { id: true },
-    });
-    if (!participant) throw new NotFoundException('Participant not found');
+    const { participant, changed } = await this.prisma.$transaction(async (tx) => {
+      await this.lockEvent(tx, eventId, clientId);
 
-    const checkedIn = await this.prisma.participant.update({
-      where: { id: participantId },
-      data: { checkedIn: true, checkedInAt: new Date(), status: 'ATTENDED' },
+      const existing = await tx.participant.findFirst({ where: { id: participantId, eventId } });
+      if (!existing) throw new NotFoundException('Participant not found');
+      if (existing.status === 'ATTENDED') return { participant: existing, changed: false };
+      if (!CHECKIN_STATUSES.includes(existing.status)) {
+        throw new ConflictException(`Cannot check in a participant with status ${existing.status}`);
+      }
+
+      const participant = await tx.participant.update({
+        where: { id: participantId },
+        data: { checkedIn: true, checkedInAt: new Date(), status: 'ATTENDED' },
+      });
+      return { participant, changed: true };
     });
 
-    this.emit(clientId, WebhookEventType.PARTICIPANT_CHECKED_IN, checkedIn);
-    return checkedIn;
+    if (changed) this.emit(clientId, WebhookEventType.PARTICIPANT_CHECKED_IN, participant);
+    return participant;
   }
 
   async getEventStats(eventId: string, clientId: string) {
@@ -677,7 +729,7 @@ export class EventService {
 
     const count = (status: string) =>
       byStatus.find((g) => g.status === status)?._count._all ?? 0;
-    const active = count('REGISTERED') + count('CONFIRMED');
+    const active = ACTIVE_STATUSES.reduce((sum, s) => sum + count(s), 0);
 
     return {
       event,
@@ -696,30 +748,41 @@ export class EventService {
     };
   }
 
-  /** Caller must hold the event row lock (see lockEvent). */
+  /**
+   * Promotes waitlisted participants, oldest first, into the free seats — at
+   * most `limit`, all of them when there is no cap. Caller must hold the event
+   * row lock (see lockEvent).
+   */
   private async promoteFromWaitlistTx(
     tx: Prisma.TransactionClient,
     eventId: string,
     maxParticipants: number | null,
+    limit?: number,
   ) {
-    if (maxParticipants == null) return null;
-    if ((await this.countActive(tx, eventId)) >= maxParticipants) return null;
+    let take = limit;
+    if (maxParticipants != null) {
+      const free = maxParticipants - (await this.countActive(tx, eventId));
+      take = Math.min(free, limit ?? free);
+    }
+    if (take != null && take <= 0) return [];
 
-    const first = await tx.participant.findFirst({
+    const waitlisted = await tx.participant.findMany({
       where: { eventId, status: 'WAITLIST' },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
+      take,
     });
-    if (!first) return null;
+    if (!waitlisted.length) return [];
 
-    return tx.participant.update({
-      where: { id: first.id },
+    return tx.participant.updateManyAndReturn({
+      where: { id: { in: waitlisted.map((p) => p.id) } },
       data: { status: 'REGISTERED' },
     });
   }
 
-  private emitPromoted(clientId: string, promoted: { id: string } | null) {
-    if (!promoted) return;
+  /** One participant.status_changed per promoted row. */
+  private emitPromoted(clientId: string, promoted: { id: string }[]) {
+    if (!promoted.length) return;
     this.emit(clientId, WebhookEventType.PARTICIPANT_STATUS_CHANGED, promoted, {
       previousStatus: 'WAITLIST',
     });
