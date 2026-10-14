@@ -14,6 +14,7 @@ import { IsBoolean, IsOptional, IsString, IsUrl, MaxLength } from 'class-validat
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { TenantAdminRoleGuard } from '@/modules/bastion/guards/tenant-admin-role.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
+import { BastionAuditService } from '@heyatom/bastion-client/nest';
 import { ClientService } from '@/modules/clients/client.service';
 
 export class UpdateSettingsDto {
@@ -40,7 +41,10 @@ export class UpdateSettingsDto {
 @Controller('admin/settings')
 @UseGuards(BastionUserGuard, AdminThrottlerGuard)
 export class AdminSettingsController {
-  constructor(private readonly clients: ClientService) {}
+  constructor(
+    private readonly clients: ClientService,
+    private readonly audit: BastionAuditService,
+  ) {}
 
   @Get()
   getSettings(@Request() req) {
@@ -50,14 +54,30 @@ export class AdminSettingsController {
 
   @Patch()
   @UseGuards(TenantAdminRoleGuard)
-  updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
-    return this.clients.updateClient(req.adminClient.id, dto);
+  async updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
+    const client = await this.clients.updateClient(req.adminClient.id, dto);
+    // webhookUrl decides where tenant data is POSTed — the audit trail must show who moved it.
+    this.audit.write('admin.settings.updated', {
+      userId: req.adminUser?.sub,
+      metadata: {
+        clientId: req.adminClient.id,
+        fields: Object.keys(dto),
+        ...(dto.webhookUrl !== undefined && { webhookUrlChanged: dto.webhookUrl !== req.adminClient.webhookUrl }),
+      },
+    });
+    return client;
   }
 
   @Post('webhook-secret')
   @UseGuards(TenantAdminRoleGuard)
   @HttpCode(HttpStatus.OK)
-  regenerateWebhookSecret(@Request() req) {
-    return this.clients.regenerateWebhookSecret(req.adminClient.id);
+  async regenerateWebhookSecret(@Request() req) {
+    const result = await this.clients.regenerateWebhookSecret(req.adminClient.id);
+    // Never log the secret itself.
+    this.audit.write('admin.settings.webhook_secret_regenerated', {
+      userId: req.adminUser?.sub,
+      metadata: { clientId: req.adminClient.id },
+    });
+    return result;
   }
 }
