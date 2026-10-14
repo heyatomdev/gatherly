@@ -1,3 +1,5 @@
+import { createHmac } from 'crypto';
+import { BadRequestException } from '@nestjs/common';
 import { of, throwError } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,6 +13,7 @@ describe('WebhookService queue', () => {
     client: { findUnique: jest.fn() },
   };
   const http = { post: jest.fn() };
+  const CURRENT_URL = 'https://current.example.test/hook';
   let service: WebhookService;
 
   const row = (over: Record<string, unknown> = {}) => ({
@@ -25,7 +28,7 @@ describe('WebhookService queue', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma.client.findUnique.mockResolvedValue({ webhookSecret: 's' });
+    prisma.client.findUnique.mockResolvedValue({ webhookUrl: CURRENT_URL, webhookSecret: 's' });
     service = new WebhookService(
       http as unknown as HttpService,
       prisma as unknown as PrismaService,
@@ -79,6 +82,53 @@ describe('WebhookService queue', () => {
     expect(data.nextRetryAt.getTime() - before).toBeLessThan(121_000);
   });
 
+  it("sends to the client's current URL, not the one stored at enqueue time", async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
+    prisma.webhookDelivery.findMany.mockResolvedValue([row({ webhookUrl: 'https://old.example.test/hook' })]);
+    http.post.mockReturnValue(of({ status: 200 }));
+
+    await service.processQueue();
+
+    expect(http.post.mock.calls[0][0]).toBe(CURRENT_URL);
+  });
+
+  it('marks FAILED without sending when the client cleared its URL', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
+    prisma.webhookDelivery.findMany.mockResolvedValue([row()]);
+    prisma.client.findUnique.mockResolvedValue({ webhookUrl: null, webhookSecret: 's' });
+
+    await service.processQueue();
+
+    expect(http.post).not.toHaveBeenCalled();
+    expect(prisma.webhookDelivery.update).toHaveBeenCalledWith({
+      where: { id: 'd1' },
+      data: { status: 'FAILED', lastError: 'Webhook URL removed' },
+    });
+  });
+
+  it('sends Standard Webhooks headers signed over id.timestamp.body, plus the legacy signature', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
+    const payload = { id: 'd1', event: 'event.created', timestamp: '2020-01-01T00:00:00.000Z' };
+    prisma.webhookDelivery.findMany.mockResolvedValue([row({ payload })]);
+    http.post.mockReturnValue(of({ status: 200 }));
+    const before = Math.floor(Date.now() / 1000);
+
+    await service.processQueue();
+
+    const [, body, { headers }] = http.post.mock.calls[0];
+    expect(body).toBe(JSON.stringify(payload));
+    expect(headers['webhook-id']).toBe('d1');
+    // Send time, not the enqueue-time body timestamp.
+    const ts = Number(headers['webhook-timestamp']);
+    expect(ts).toBeGreaterThanOrEqual(before);
+    expect(ts).toBeLessThanOrEqual(before + 2);
+    const expected = createHmac('sha256', 's').update(`d1.${headers['webhook-timestamp']}.${body}`).digest('base64');
+    expect(headers['webhook-signature']).toBe(`v1,${expected}`);
+    expect(headers['X-Webhook-Signature']).toBe(
+      'sha256=' + createHmac('sha256', 's').update(body).digest('hex'),
+    );
+  });
+
   it('marks FAILED at maxAttempts', async () => {
     prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
     prisma.webhookDelivery.findMany.mockResolvedValue([row({ attempts: 4 })]);
@@ -94,10 +144,10 @@ describe('WebhookService queue', () => {
   });
 });
 
-describe('WebhookService notify/cleanup', () => {
+describe('WebhookService notify/cleanup/retry', () => {
   const prisma = {
     client: { findUnique: jest.fn() },
-    webhookDelivery: { createMany: jest.fn(), deleteMany: jest.fn() },
+    webhookDelivery: { createMany: jest.fn(), deleteMany: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
     withAdvisoryLock: jest.fn(async (_name: string, fn: any) => fn(prisma)),
   };
   const service = new WebhookService({} as HttpService, prisma as unknown as PrismaService);
@@ -131,6 +181,38 @@ describe('WebhookService notify/cleanup', () => {
     const all = JSON.stringify(prisma.webhookDelivery.createMany.mock.calls);
     expect(all).not.toContain('mario@example.com');
     expect(all).not.toContain('vip');
+  });
+
+  it('gives each delivery a payload id equal to its row id (consumer dedupe key)', async () => {
+    prisma.client.findUnique.mockResolvedValue({ webhookUrl: 'https://example.test/hook' });
+
+    await service.notify('c1', WebhookEventType.PARTICIPANT_JOINED, [
+      { id: 'p1', eventId: 'e1' },
+      { id: 'p2', eventId: 'e1' },
+    ]);
+
+    const rows = prisma.webhookDelivery.createMany.mock.calls[0][0].data;
+    expect(rows[0].id).toEqual(expect.any(String));
+    expect(rows[0].payload.id).toBe(rows[0].id);
+    expect(rows[1].payload.id).toBe(rows[1].id);
+    expect(rows[0].id).not.toBe(rows[1].id);
+  });
+
+  it('refuses a manual retry when the client has no webhookUrl', async () => {
+    prisma.webhookDelivery.findFirst.mockResolvedValue({ id: 'd1', status: 'FAILED' });
+    prisma.client.findUnique.mockResolvedValue({ webhookUrl: null });
+
+    await expect(service.retryDelivery('d1', 'c1')).rejects.toThrow(BadRequestException);
+    expect(prisma.webhookDelivery.update).not.toHaveBeenCalled();
+  });
+
+  it('requeues a FAILED delivery when the client has a webhookUrl', async () => {
+    prisma.webhookDelivery.findFirst.mockResolvedValue({ id: 'd1', status: 'FAILED' });
+    prisma.client.findUnique.mockResolvedValue({ webhookUrl: 'https://example.test/hook' });
+
+    await service.retryDelivery('d1', 'c1');
+
+    expect(prisma.webhookDelivery.update.mock.calls[0][0].data).toMatchObject({ status: 'PENDING', attempts: 0 });
   });
 
   it('enqueues nothing when the client has no webhookUrl', async () => {

@@ -277,6 +277,8 @@ model IdempotencyKey {
   path         String
   responseBody Json
   statusCode   Int
+  /// sha256 of the canonical request body; null on rows from before it existed
+  requestHash  String?
   createdAt    DateTime @default(now())
   expiresAt    DateTime
 

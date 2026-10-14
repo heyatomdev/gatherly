@@ -157,6 +157,9 @@ ADMIN/OWNER/SUPER_ADMIN only) at method level: `PATCH /admin/settings`
 (webhookUrl → redirect webhook payloads), `POST /admin/settings/webhook-secret`
 (returns the new HMAC secret), `POST /admin/webhooks/deliveries/:id/retry`.
 GETs stay open to all accepted roles (settings GET returns safe fields only).
+Both settings writes are audited (`admin.settings.updated` with changed field
+names + `webhookUrlChanged`, `admin.settings.webhook_secret_regenerated`),
+like `/admin/clients` — never log the HMAC secret.
 Method-level only: it reads `req.adminUser`, which the class-level
 `BastionUserGuard` sets first; without it the guard denies.
 
@@ -277,6 +280,22 @@ Waitlist is automatic: if `maxParticipants` reached, status becomes `WAITLIST`. 
 `/cancel`, `/complete`, which validate (publish: title + future start), cascade
 (cancel: future recurring children), audit and emit the right webhook.
 
+### Idempotency (`src/common/idempotency.interceptor.ts`)
+
+`Idempotency-Key` on `POST /events`, `POST /events/:id/participants`,
+`POST /events/:id/participants/bulk`. Row in `idempotency_keys` keyed by
+`(key, clientId, "METHOD originalUrl")`, TTL 24h. Claim first (insert with
+`statusCode 0` = IN_PROGRESS), then run the handler.
+
+- `requestHash` = sha256 of the canonical (sorted-keys) JSON body. Same key,
+  different body → `422`. Legacy rows with null hash skip the check.
+- IN_PROGRESS younger than `STALE_CLAIM_MS` (2 min) → `409`; older is an
+  abandoned claim (crash) and is taken over. Expired rows not yet cleaned up are
+  taken over too. Takeover is a compare-and-set `updateMany` on
+  `(id, statusCode, createdAt)` so one concurrent retry wins, the rest get 409.
+- Handler error → claim deleted (retry runs again). Storing the response fails
+  → retried once, then claim deleted and logged as `error`.
+
 ### Updating tags on an event
 
 ```json
@@ -360,6 +379,21 @@ No more public `/clients` — see "Client management — no longer self-service"
 ## Webhook
 
 Client sets `webhookUrl` on their record. `WebhookService.notify` writes a `WebhookDelivery` row (outbox); the `processQueue` cron POSTs it, HMAC-signed with the client's webhook secret.
+
+**URL and secret are read from `Client` at send time**, not from the row:
+`WebhookDelivery.webhookUrl` is the URL at enqueue time, audit only. Queued rows
+and manual retries follow a URL change; if the client's URL is now null the row
+goes `FAILED` (`lastError: "Webhook URL removed"`) without sending, and
+`retryDelivery` refuses with 400.
+
+**Headers (Standard Webhooks)**: `webhook-id` = delivery id (also payload `id`,
+generated in `notify()` so both match — consumers dedupe on it, delivery is
+at-least-once), `webhook-timestamp` = unix seconds at **send** time (payload
+`timestamp` is enqueue time and reused on retries — never sign that),
+`webhook-signature` = `v1,` + base64 HMAC-SHA256(secret, `${id}.${ts}.${body}`),
+secret used as a UTF-8 string (not `whsec_` base64). Legacy
+`X-Webhook-Signature: sha256=<hex(body)>` is still sent — remove it one release
+after 2026-10 (deprecated in the integration guide).
 
 Event types: `event.created`, `event.updated`, `event.cancelled`, `event.published`, `event.completed`, `participant.joined`, `participant.status_changed`, `participant.removed`, `participant.checked_in`.
 

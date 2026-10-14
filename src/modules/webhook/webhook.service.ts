@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { createHmac } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { checkWebhookUrl, webhookAgent } from './webhook-url';
@@ -30,8 +30,17 @@ export class WebhookService {
     private prisma: PrismaService,
   ) {}
 
+  /** Legacy `X-Webhook-Signature` — body only, no replay protection. Remove after one release. */
   private signPayload(secret: string, body: string): string {
     return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
+  }
+
+  /**
+   * Standard Webhooks `webhook-signature`: HMAC-SHA256 over `${id}.${timestamp}.${body}`.
+   * The key is the client's webhookSecret string as-is (UTF-8), not a `whsec_` base64 key.
+   */
+  private signStandard(secret: string, id: string, timestamp: string, body: string): string {
+    return 'v1,' + createHmac('sha256', secret).update(`${id}.${timestamp}.${body}`).digest('base64');
   }
 
   @Cron('* * * * *')
@@ -74,26 +83,43 @@ export class WebhookService {
 
   private async attempt(delivery: any): Promise<void> {
     const attempts = delivery.attempts + 1;
+    // The row's webhookUrl is the URL at enqueue time, kept for audit only: always send to the
+    // client's current URL, so a changed or cleared URL never receives queued/retried rows.
+    let url: string | null | undefined;
 
     try {
+      const client = await this.prisma.client.findUnique({
+        where: { id: delivery.clientId },
+        select: { webhookUrl: true, webhookSecret: true },
+      });
+      url = client?.webhookUrl;
+      if (!url) {
+        await this.prisma.webhookDelivery.update({
+          where: { id: delivery.id },
+          data: { status: 'FAILED', lastError: 'Webhook URL removed' },
+        });
+        return;
+      }
+
       // Re-checked at send time: URLs stored before validation existed, and DNS can change.
-      checkWebhookUrl(delivery.webhookUrl);
+      checkWebhookUrl(url);
       const body = JSON.stringify(delivery.payload);
+      // Send time, not enqueue time: the body's `timestamp` is reused on every retry.
+      const timestamp = Math.floor(Date.now() / 1000).toString();
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'User-Agent': 'Gatherly/1.0 Webhook',
+        'webhook-id': delivery.id,
+        'webhook-timestamp': timestamp,
       };
 
-      const client = await this.prisma.client.findUnique({
-        where: { id: delivery.clientId },
-        select: { webhookSecret: true },
-      });
       if (client?.webhookSecret) {
+        headers['webhook-signature'] = this.signStandard(client.webhookSecret, delivery.id, timestamp, body);
         headers['X-Webhook-Signature'] = this.signPayload(client.webhookSecret, body);
       }
 
       await firstValueFrom(
-        this.httpService.post(delivery.webhookUrl, body, {
+        this.httpService.post(url, body, {
           headers,
           httpsAgent: webhookAgent,
           maxRedirects: 0,
@@ -126,7 +152,7 @@ export class WebhookService {
       this.logger.debug(`Webhook delivery ${delivery.id} failed: ${error?.message}`);
       if (failed) {
         this.logger.error(
-          `Webhook permanently failed after ${attempts} attempts: ${delivery.webhookUrl}`,
+          `Webhook permanently failed after ${attempts} attempts: ${url ?? delivery.webhookUrl}`,
         );
       }
     }
@@ -157,6 +183,14 @@ export class WebhookService {
     if (delivery.status !== 'FAILED') {
       throw new BadRequestException('Only FAILED deliveries can be retried');
     }
+    // Sent to the client's current URL (see attempt()), so there must be one.
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+      select: { webhookUrl: true },
+    });
+    if (!client?.webhookUrl) {
+      throw new BadRequestException('No webhook URL configured');
+    }
     await this.prisma.webhookDelivery.update({
       where: { id: deliveryId },
       data: { status: 'PENDING', attempts: 0, nextRetryAt: new Date(), lastError: null },
@@ -186,12 +220,17 @@ export class WebhookService {
     const format = type.startsWith('event.') ? formatEventForWebhook : formatParticipantForWebhook;
     const timestamp = new Date().toISOString();
     await this.prisma.webhookDelivery.createMany({
-      data: list.map((item) => ({
-        clientId,
-        webhookUrl: client.webhookUrl!,
-        eventType: type,
-        payload: { event: type, timestamp, clientId, data: { ...format(item), ...extra } },
-      })),
+      data: list.map((item) => {
+        // Same id as the `webhook-id` header: the consumer's dedupe key (delivery is at-least-once).
+        const id = randomUUID();
+        return {
+          id,
+          clientId,
+          webhookUrl: client.webhookUrl!,
+          eventType: type,
+          payload: { id, event: type, timestamp, clientId, data: { ...format(item), ...extra } },
+        };
+      }),
     });
   }
 }

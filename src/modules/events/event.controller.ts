@@ -111,7 +111,9 @@ export class EventController {
 
   @Post(':eventId/participants/bulk')
   @HttpCode(HttpStatus.OK)
+  @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Add multiple participants in one request. Returns counts of added/waitlisted/skipped/errors.' })
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID from caller — retries return cached response' })
   async addParticipantsBulk(
     @Request() req,
     @Param('eventId') eventId: string,
