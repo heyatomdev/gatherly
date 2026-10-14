@@ -1,3 +1,11 @@
+---
+type: plan
+service: gatherly
+status: done
+updated: 2026-08-14
+verified: c0f87ba
+---
+
 # Dev Plan 14 — Bastion Integration
 
 **Goal**: Replace Gatherly's custom `X-Client-Token` auth with Bastion JWT RS256.  
@@ -54,7 +62,7 @@ pnpm add -D @types/cookie-parser
 
 ### Step 2 — Create `src/modules/bastion/`
 
-Files to create (boilerplate from `docs/BASTION_INTEGRATION.md`):
+Files to create (boilerplate from `../docs/integrations/bastion.md`):
 
 ```
 src/modules/bastion/

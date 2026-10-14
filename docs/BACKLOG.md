@@ -24,7 +24,7 @@ lo chiede) · **REJECT**.
 | B8 | People: `events_count` include `CANCELLED`/`WAITLIST`; `last_seen` include eventi futuri → VIP/at-risk falsati | `admin-people.service.ts:~87-101` | aperto |
 | B9 | Serie ricorrenti si fermano in silenzio dopo 52 occorrenze / 2 anni; nessun cron le estende | `event.service.ts:67,215-289` | aperto |
 | B10 | Toggle "Email notifications" in Meridian non fa nulla (`Client.emailActive` non è letto da nessuno) | `meridian/app/pages/[tenant]/gatherly/settings.vue:59-69` | aperto |
-| B11 | Docs obsolete: `X-Client-Token` / `POST /clients` pubblico; colonna `Client.token` e route di regen inutilizzate | `../docs/GATHERLY_INTEGRATION.md:10-13,85,127-161`, root `CLAUDE.md:248` | aperto |
+| B11 | Docs obsolete: `X-Client-Token` / `POST /clients` pubblico; colonna `Client.token` e route di regen inutilizzate | `../docs/integrations/gatherly.md`, root `CLAUDE.md:248` | aperto |
 | B12 | `updateEvent` non blocca la riga né rivalida un nuovo `startTime` (passato / dopo `endTime`) | `event.service.ts:342-379` | aperto |
 
 Audit: il cambio di `webhookUrl` e la rigenerazione del secret lato tenant

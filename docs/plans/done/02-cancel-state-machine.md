@@ -1,3 +1,11 @@
+---
+type: plan
+service: gatherly
+status: done
+updated: 2026-08-14
+verified: c0f87ba
+---
+
 # Dev Plan — Cancel Endpoint + State Machine
 
 ## Goal

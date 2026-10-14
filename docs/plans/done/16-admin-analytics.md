@@ -1,3 +1,11 @@
+---
+type: plan
+service: gatherly
+status: done
+updated: 2026-08-15
+verified: c0f87ba
+---
+
 # Dev Plan — Admin Analytics API (stats, people, retention)
 
 ## Goal

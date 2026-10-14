@@ -506,9 +506,10 @@ Rules:
 
 ## Docs
 
-- `../docs/GATHERLY_INTEGRATION.md` — integration guide per altri servizi (unica copia)
-- `docs/dev-plans/` — piani di sviluppo storici
-- `../docs/BASTION_INTEGRATION.md` — Bastion JWT/JWKS guide
-- `../docs/FILEHARBOR_INTEGRATION.md` — FileHarbor integration guide
-- `../docs/ARTICUNO_INTEGRATION.md` — Articuno integration guide
-- `../docs/CODING_STANDARDS.md` — NestJS conventions condivise
+@../docs/integrations/bastion.md
+
+- [`docs/BACKLOG.md`](docs/BACKLOG.md) — bug verificati e backlog
+- [`docs/plans/`](docs/plans/README.md) — piani di sviluppo (chiusi in `docs/plans/done/`)
+- [`../docs/integrations/gatherly.md`](../docs/integrations/gatherly.md) — integration guide per altri servizi (unica copia)
+- [`../docs/standards/coding.md`](../docs/standards/coding.md) — NestJS conventions condivise
+- [`../docs/standards/documentation.md`](../docs/standards/documentation.md) — convenzione documentazione
