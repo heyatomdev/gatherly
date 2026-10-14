@@ -83,7 +83,7 @@ export class AdminAnalyticsService {
       }>>`
         SELECT
           AVG(CASE WHEN "maxParticipants" IS NOT NULL AND "maxParticipants" > 0
-            THEN confirmed_count::float / "maxParticipants" ELSE NULL END) AS avg_fill_rate,
+            THEN seated_count::float / "maxParticipants" ELSE NULL END) AS avg_fill_rate,
           SUM(checked_in_count)::float / NULLIF(SUM(active_count), 0) AS checkin_rate,
           1 - SUM(CASE WHEN status = 'COMPLETED' THEN checked_in_count ELSE 0 END)::float
             / NULLIF(SUM(CASE WHEN status = 'COMPLETED' THEN active_count ELSE 0 END), 0) AS no_show_rate
@@ -92,7 +92,8 @@ export class AdminAnalyticsService {
             e.id,
             e."maxParticipants",
             e.status,
-            count(*) FILTER (WHERE p.status IN ('CONFIRMED', 'ATTENDED'))::int AS confirmed_count,
+            -- seats taken, same set as EventService ACTIVE_STATUSES
+            count(*) FILTER (WHERE p.status IN ('REGISTERED', 'CONFIRMED', 'ATTENDED'))::int AS seated_count,
             count(*) FILTER (WHERE p.status NOT IN ('CANCELLED', 'WAITLIST'))::int AS active_count,
             count(*) FILTER (WHERE p."checkedIn")::int AS checked_in_count
           FROM events e
@@ -111,7 +112,7 @@ export class AdminAnalyticsService {
           AND e."maxParticipants" IS NOT NULL
           AND (
             SELECT count(*) FROM participants p
-            WHERE p."eventId" = e.id AND p.status IN ('CONFIRMED', 'ATTENDED')
+            WHERE p."eventId" = e.id AND p.status IN ('REGISTERED', 'CONFIRMED', 'ATTENDED')
           ) >= e."maxParticipants"
           AND (
             SELECT count(*) FROM participants p

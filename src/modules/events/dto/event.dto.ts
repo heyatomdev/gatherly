@@ -201,10 +201,9 @@ export class UpdateEventDto {
   @IsString()
   timezone?: string;
 
-  @ApiPropertyOptional({ enum: ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'] })
-  @IsOptional()
-  @IsEnum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'])
-  status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
+  // No `status`: transitions go through PUT /publish, /cancel, /complete, which
+  // validate, cascade, audit and emit the right webhook. forbidNonWhitelisted
+  // turns a `status` in the body into a 400.
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -241,12 +240,12 @@ export class UpdateEventDto {
   @IsBoolean()
   isOnline?: boolean;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true, description: 'null removes the cap (promotes the whole waitlist)' })
   @IsOptional()
   @IsNumber()
   @Min(1)
   @Type(() => Number)
-  maxParticipants?: number;
+  maxParticipants?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()
