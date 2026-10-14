@@ -6,3 +6,5 @@ process.env.BASTION_URL ??= 'http://localhost:3001';
 process.env.BASTION_APP_SLUG ??= 'gatherly';
 process.env.BASTION_CLIENT_API_KEY ??= 'sc_test';
 process.env.ADMIN_ACCEPTED_APP_SLUGS ??= 'gatherly,meridian';
+// Parallel suites each boot AppModule; a fixed metrics port collides (EADDRINUSE).
+process.env.METRICS_PORT ??= '0';
