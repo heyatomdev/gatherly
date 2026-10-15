@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsIn, IsNumber, IsOptional, IsString, validateSync } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsNumber, Min, IsOptional, IsString, validateSync } from 'class-validator';
 import { swaggerEnabled } from '@heyatom/nest-common';
 
 enum LogLevel {
@@ -58,6 +58,13 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   CORS_ORIGINS: string = 'http://localhost:3000';
+
+  // X-Forwarded-For hops to trust for req.ip (the throttler keys on it): 0 = socket peer,
+  // 1 = behind one nginx. Without it every client behind the proxy shares one IP.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  TRUST_PROXY_HOPS: number = 0;
 
   @IsOptional()
   @IsNumber()
