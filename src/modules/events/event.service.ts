@@ -22,7 +22,7 @@ import {
   GetParticipantsQueryDto,
   BulkAddParticipantsDto,
 } from './dto/event.dto';
-import { PaginatedResult, paginate } from '@/common/pagination';
+import { PaginatedResult, paginate } from '@heyatom/nest-common';
 
 /**
  * Statuses that take a seat against maxParticipants. ATTENDED counts: a

@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiPaginatedResponse, PaginatedResult } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { AdminPeopleService } from './admin-people.service';
@@ -13,7 +14,8 @@ export class AdminPeopleController {
   constructor(private readonly people: AdminPeopleService) {}
 
   @Get()
-  list(@Request() req, @Query() query: PeopleQueryDto) {
+  @ApiPaginatedResponse()
+  list(@Request() req, @Query() query: PeopleQueryDto): Promise<PaginatedResult<any>> {
     return this.people.listPeople(req.adminClient.id, query);
   }
 
