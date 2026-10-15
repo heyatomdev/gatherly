@@ -13,7 +13,7 @@ Multi-tenant event management API. Clients (gyms, gaming orgs, etc.) call the AP
 - **ORM**: Prisma 7 + PostgreSQL
 - **Package manager**: pnpm (enforced — `npm install` fails)
 - **Validation**: class-validator + class-transformer (global ValidationPipe with whitelist + transform)
-- **Docs**: Swagger at `/docs`
+- **Docs**: Swagger at `/docs` when `ENABLE_SWAGGER` (see HTTP contract)
 - **Scheduling**: `@nestjs/schedule` (cron jobs)
 - **HTTP client**: `@nestjs/axios` (webhook delivery)
 
@@ -42,6 +42,8 @@ defaults live there only; `main.ts` reads them through `ConfigService`.
 | `NODE_ENV` | `development` | No |
 | `PORT` | `3000` | No |
 | `CORS_ORIGINS` | `http://localhost:3000` (comma-separated) | No |
+| `TRUST_PROXY_HOPS` | `0` | No (`1` behind nginx — the IP throttler keys on `req.ip`) |
+| `ENABLE_SWAGGER` | `true` only if `NODE_ENV` is explicitly `development`/`test` | No |
 | `LOG_LEVEL` | `info` | No |
 | `BASTION_URL` | — | Yes |
 | `BASTION_APP_SLUG` | — | Yes |
@@ -331,6 +333,33 @@ Upserts by `(eventId, locale)` — existing locale is updated, new locale is cre
 
 ---
 
+## HTTP contract (`@heyatom/nest-common`)
+
+Platform standard (`../docs/standards/api.md`), all from the package — don't re-implement locally:
+
+- **Bootstrap** (`main.ts`): `setupHttpApp()` — shutdown hooks, `trust proxy` from
+  `TRUST_PROXY_HOPS`, helmet, CORS allowlist from `CORS_ORIGINS` (disallowed origin → no CORS
+  headers, never a 500; `Idempotency-Key` allowed), 1mb JSON limit, global `ValidationPipe`
+  (whitelist + forbidNonWhitelisted + transform). `rawBody: true` stays on `NestFactory.create`.
+- **Envelope**: `TransformInterceptor` as `APP_INTERCEPTOR` — 2xx bodies become `{ data }`;
+  `paginate()` results pass through as `{ data, meta }`.
+- **Errors**: `AllExceptionsFilter` as `APP_FILTER` — `{ statusCode, code, message, errors?,
+  requestId }`. Validation → `400 VALIDATION_FAILED` + `errors[]`; unknown errors → generic
+  `500 INTERNAL_ERROR`; Prisma `P2002`/`P2003` → `409 CONFLICT`, `P2025` → `404`. So **don't
+  catch P2002 just to throw a code-less 409** — catch it only inside a `$transaction` or to give
+  a specific code. Throw domain errors as `new XException({ code: 'UPPER_SNAKE', message })`;
+  current codes: `IDEMPOTENCY_IN_PROGRESS`, `IDEMPOTENCY_KEY_REUSED` (422),
+  `REGISTRATION_CLOSED`, `ALREADY_REGISTERED`, `EVENT_FULL`, `TENANT_TAKEN`,
+  `WEBHOOK_TARGET_BLOCKED` (400). Meridian reads `errors` on validation 400s.
+- **Pagination**: list query DTOs **extend** `PageParams` (`page` 1, `limit` 20, max 100,
+  `skip` getter — lost on spread); services return `paginate(data, total, query)`; controllers
+  get `@ApiPaginatedResponse()` and an explicit `Promise<PaginatedResult<…>>` return type (with
+  `declaration: true`, TS2883 otherwise). Paginated: `/events`, `/events/:id/participants`, the
+  same under `/admin`, `/admin/people`. Other lists aren't — paginating them is a contract change.
+- **Swagger**: `ENABLE_SWAGGER` resolved in `validate()` by `swaggerEnabled()` from the raw
+  `NODE_ENV` (unset → off); `setupSwagger()` with title `Gatherly`, version `APP_VERSION`
+  (`src/common/app-version.ts`, `readAppVersion()`), UI `/docs`, JSON `/docs-json`.
+
 ## API Endpoints
 
 ### Clients — `/admin/clients` (SUPER_ADMIN only, Bastion user JWT)
@@ -349,7 +378,7 @@ No more public `/clients` — see "Client management — no longer self-service"
 | `GET` | `/admin/clients/:id/webhook-deliveries?status=` | Webhook delivery attempts |
 
 `tenantId` is `@unique` on `Client` — a duplicate on create/update returns
-`409 Conflict`, not a 500.
+`409 TENANT_TAKEN`, not a 500.
 
 ### Categories (auth required)
 
