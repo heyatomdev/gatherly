@@ -4,6 +4,7 @@ export enum WebhookEventType {
   EVENT_CANCELLED = 'event.cancelled',
   EVENT_PUBLISHED = 'event.published',
   EVENT_COMPLETED = 'event.completed',
+  EVENT_DELETED = 'event.deleted',
 
   PARTICIPANT_JOINED = 'participant.joined',
   PARTICIPANT_STATUS_CHANGED = 'participant.status_changed',

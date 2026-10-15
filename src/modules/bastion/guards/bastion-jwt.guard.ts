@@ -18,6 +18,11 @@ import { PrismaService } from '@/modules/prisma/prisma.service';
  * is the binding to a local `Client` row: the token's tenant must have an active
  * client here, and that row rides on `req.client` for the handlers.
  */
+/** `/admin` and `/admin/...` only — a bare prefix match would also wave through `/administrators`. */
+function isAdminPath(path: string | undefined): boolean {
+  return path === '/admin' || Boolean(path?.startsWith('/admin/'));
+}
+
 @Injectable()
 export class BastionJwtGuard extends ServiceClientJwtGuard {
   constructor(
@@ -31,7 +36,7 @@ export class BastionJwtGuard extends ServiceClientJwtGuard {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
-    if (req.path?.startsWith('/admin')) return true;
+    if (isAdminPath(req.path)) return true;
 
     await super.canActivate(ctx);
     if (!req.user) return true; // @Public() — the package guard stepped aside

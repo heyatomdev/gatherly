@@ -128,4 +128,8 @@ describe('BastionJwtGuard', () => {
     await expect(guard.canActivate(makeCtx({}, '/admin/events'))).resolves.toBe(true);
     expect(mockJwks.verify).not.toHaveBeenCalled();
   });
+
+  it('does not step aside on paths that merely start with "admin"', async () => {
+    await expect(guard.canActivate(makeCtx({}, '/administrators'))).rejects.toThrow(UnauthorizedException);
+  });
 });

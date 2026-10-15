@@ -57,13 +57,10 @@ export class AdminSettingsController {
   async updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
     const client = await this.clients.updateClient(req.adminClient.id, dto);
     // webhookUrl decides where tenant data is POSTed — the audit trail must show who moved it.
-    this.audit.write('admin.settings.updated', {
-      userId: req.adminUser?.sub,
-      metadata: {
-        clientId: req.adminClient.id,
-        fields: Object.keys(dto),
-        ...(dto.webhookUrl !== undefined && { webhookUrlChanged: dto.webhookUrl !== req.adminClient.webhookUrl }),
-      },
+    this.audit.writeAsAdmin('settings.updated', req.adminUser, {
+      clientId: req.adminClient.id,
+      fields: Object.keys(dto),
+      ...(dto.webhookUrl !== undefined && { webhookUrlChanged: dto.webhookUrl !== req.adminClient.webhookUrl }),
     });
     return client;
   }
@@ -74,10 +71,7 @@ export class AdminSettingsController {
   async regenerateWebhookSecret(@Request() req) {
     const result = await this.clients.regenerateWebhookSecret(req.adminClient.id);
     // Never log the secret itself.
-    this.audit.write('admin.settings.webhook_secret_regenerated', {
-      userId: req.adminUser?.sub,
-      metadata: { clientId: req.adminClient.id },
-    });
+    this.audit.writeAsAdmin('settings.webhook_secret_regenerated', req.adminUser, { clientId: req.adminClient.id });
     return result;
   }
 }

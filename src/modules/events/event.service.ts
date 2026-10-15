@@ -210,7 +210,6 @@ export class EventService {
           startTime: new Date(data.startTime),
           endTime: data.endTime ? new Date(data.endTime) : undefined,
           timezone: data.timezone,
-          status: data.status,
           type: data.type,
           coverImageUrl: data.coverImageUrl,
           categoryId: data.categoryId,
@@ -469,6 +468,40 @@ export class EventService {
     this.emit(clientId, WebhookEventType.EVENT_PUBLISHED, published);
 
     return published;
+  }
+
+  /**
+   * Hard delete, DRAFT only: a draft was never open to participants, so it can
+   * go. Anything past DRAFT goes through cancel. A draft series is refused when
+   * one of its occurrences was published on its own — the cascade would take it
+   * along. Translations, tags and draft occurrences cascade in the DB.
+   */
+  async deleteEvent(eventId: string, clientId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, clientId },
+      include: EVENT_INCLUDE,
+    });
+    if (!event) throw new NotFoundException('Event not found');
+    if (event.status !== 'DRAFT') {
+      throw new ConflictException(`Event is ${event.status}, only DRAFT events can be deleted — cancel it instead`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const live = await tx.event.count({ where: { parentEventId: eventId, status: { not: 'DRAFT' } } });
+      if (live) throw new ConflictException(`${live} occurrence(s) of this series are past DRAFT — cancel them first`);
+
+      // `status` in the filter: a publish that landed after the read above wins.
+      const { count } = await tx.event.deleteMany({ where: { id: eventId, clientId, status: 'DRAFT' } });
+      if (!count) throw new ConflictException('Event is no longer a DRAFT');
+
+      // Occurrences share the parent's rule; only the series root owns it.
+      if (event.recurrenceRuleId && !event.parentEventId) {
+        await tx.recurrenceRule.deleteMany({ where: { id: event.recurrenceRuleId } });
+      }
+    });
+
+    this.audit.write('event.deleted', { metadata: { eventId, clientId } });
+    this.emit(clientId, WebhookEventType.EVENT_DELETED, event);
   }
 
   async completeEvent(eventId: string, clientId: string) {

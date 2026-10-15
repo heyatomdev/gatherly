@@ -13,6 +13,8 @@ const mockTx = {
     update: jest.fn(),
     updateMany: jest.fn(),
     createMany: jest.fn(),
+    count: jest.fn(),
+    deleteMany: jest.fn(),
   },
   participant: {
     create: jest.fn(),
@@ -24,7 +26,7 @@ const mockTx = {
     count: jest.fn(),
   },
   tag: { createMany: jest.fn(), findMany: jest.fn() },
-  recurrenceRule: { create: jest.fn() },
+  recurrenceRule: { create: jest.fn(), deleteMany: jest.fn() },
   eventTranslation: { createMany: jest.fn(), upsert: jest.fn() },
   eventTag: { createMany: jest.fn(), deleteMany: jest.fn() },
   idempotencyKey: { deleteMany: jest.fn() },
@@ -346,6 +348,65 @@ describe('EventService', () => {
       mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ status: 'COMPLETED' }));
 
       await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('deleteEvent', () => {
+    beforeEach(() => {
+      mockTx.event.count.mockResolvedValue(0);
+      mockTx.event.deleteMany.mockResolvedValue({ count: 1 });
+    });
+
+    it('deletes a DRAFT, audits it and emits event.deleted', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ status: 'DRAFT' }));
+
+      await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).resolves.toBeUndefined();
+      expect(mockTx.event.deleteMany).toHaveBeenCalledWith({ where: { id: EVENT_ID, clientId: CLIENT_ID, status: 'DRAFT' } });
+      expect(mockTx.recurrenceRule.deleteMany).not.toHaveBeenCalled();
+      expect(mockAudit.write).toHaveBeenCalledWith('event.deleted', { metadata: { eventId: EVENT_ID, clientId: CLIENT_ID } });
+      expect(mockWebhook.notify).toHaveBeenCalledWith(CLIENT_ID, 'event.deleted', expect.objectContaining({ id: EVENT_ID }), undefined);
+    });
+
+    it('throws NotFoundException for an event of another client', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(null);
+
+      await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(NotFoundException);
+      expect(mockTx.event.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it.each(['PUBLISHED', 'CANCELLED', 'COMPLETED'])('refuses a %s event with 409', async (status) => {
+      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ status }));
+
+      await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(ConflictException);
+      expect(mockTx.event.deleteMany).not.toHaveBeenCalled();
+      expect(mockWebhook.notify).not.toHaveBeenCalled();
+    });
+
+    it('refuses a draft series with a published occurrence', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ recurrenceRuleId: 'r1', parentEventId: null }));
+      mockTx.event.count.mockResolvedValue(1);
+
+      await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(ConflictException);
+      expect(mockTx.event.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the event was published in the meantime', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(baseEvent());
+      mockTx.event.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(ConflictException);
+      expect(mockAudit.write).not.toHaveBeenCalled();
+    });
+
+    it('drops the recurrence rule with the series root, not with one occurrence', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ recurrenceRuleId: 'r1', parentEventId: null }));
+      await service.deleteEvent(EVENT_ID, CLIENT_ID);
+      expect(mockTx.recurrenceRule.deleteMany).toHaveBeenCalledWith({ where: { id: 'r1' } });
+
+      mockTx.recurrenceRule.deleteMany.mockClear();
+      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ recurrenceRuleId: 'r1', parentEventId: 'parent' }));
+      await service.deleteEvent(EVENT_ID, CLIENT_ID);
+      expect(mockTx.recurrenceRule.deleteMany).not.toHaveBeenCalled();
     });
   });
 
@@ -823,7 +884,7 @@ describe('EventService', () => {
       expect(mockTx.event.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'COMPLETED' } }),
       );
-      expect((mockTx.event as any).deleteMany).toBeUndefined();
+      expect(mockTx.event.deleteMany).not.toHaveBeenCalled();
     });
   });
 });

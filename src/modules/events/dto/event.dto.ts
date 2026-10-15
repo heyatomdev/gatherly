@@ -78,10 +78,9 @@ export class CreateEventDto {
   @IsString()
   timezone?: string;
 
-  @ApiPropertyOptional({ enum: ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'] })
-  @IsOptional()
-  @IsEnum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'])
-  status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
+  // No `status`: every event starts as DRAFT. PUT /publish is the only way to
+  // PUBLISHED — it validates title and start time and emits event.published.
+  // forbidNonWhitelisted turns a `status` in the body into a 400.
 
   @ApiPropertyOptional()
   @IsOptional()

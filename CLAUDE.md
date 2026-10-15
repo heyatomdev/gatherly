@@ -46,7 +46,7 @@ defaults live there only; `main.ts` reads them through `ConfigService`.
 | `BASTION_URL` | — | Yes |
 | `BASTION_APP_SLUG` | — | Yes |
 | `BASTION_CLIENT_API_KEY` | — | Yes |
-| `BASTION_TENANT_SLUG` | — | No (single-tenant only) |
+| `BASTION_TENANT_SLUG` | — | Yes when Gatherly's Bastion service client is global (no tenant) or `gatherly` has clients in several tenants — `POST /auth/client` answers 400 without it and audit writes stop. Optional only for a single tenant-bound client |
 | `BASTION_JWKS_TTL_MS` | `300000` | No |
 | `THROTTLE_TTL_MS` | `60000` | No |
 | `THROTTLE_LIMIT` | `100` | No |
@@ -157,9 +157,17 @@ ADMIN/OWNER/SUPER_ADMIN only) at method level: `PATCH /admin/settings`
 (webhookUrl → redirect webhook payloads), `POST /admin/settings/webhook-secret`
 (returns the new HMAC secret), `POST /admin/webhooks/deliveries/:id/retry`.
 GETs stay open to all accepted roles (settings GET returns safe fields only).
-Both settings writes are audited (`admin.settings.updated` with changed field
-names + `webhookUrlChanged`, `admin.settings.webhook_secret_regenerated`),
-like `/admin/clients` — never log the HMAC secret.
+Both settings writes are audited (`settings.updated` with changed field
+names + `webhookUrlChanged`, `settings.webhook_secret_regenerated`),
+like `/admin/clients` (`client.created|updated|revoked|reactivated|token_regenerated|webhook_secret_regenerated`)
+— never log the HMAC secret or token. Admin writes go through
+`BastionAuditService.writeAsAdmin(event, req.adminUser, metadata)`: it sets
+`userId` only when the admin is in the service token's tenant (Bastion drops a
+foreign `userId`), otherwise puts `actorId`/`actorRole`/`actorAppSlug` in metadata.
+**Event names have exactly one dot** (`resource.action`, Bastion's
+`CreateEventDto` regex) — Bastion prefixes the service slug itself and stores
+`gatherly.settings.updated` with `appSlug: gatherly`, so no `admin.` prefix:
+a second dot is a `400` that `BastionAuditService` only logs.
 Method-level only: it reads `req.adminUser`, which the class-level
 `BastionUserGuard` sets first; without it the guard denies.
 
@@ -180,8 +188,8 @@ not 401 (package semantics: authenticated, wrong audience).
 
 The global `BastionJwtGuard` (`src/modules/bastion/guards/bastion-jwt.guard.ts`,
 registered as `APP_GUARD`, a subclass of `ServiceClientJwtGuard` from
-`@heyatom/bastion-client/nest` that adds the local `Client` lookup) returns `true` for **every** path starting with
-`/admin`, no exceptions — auth for the whole admin surface is deferred to
+`@heyatom/bastion-client/nest` that adds the local `Client` lookup) returns `true` for `/admin` and **every** `/admin/...` path
+(not `/administrators` — exact segment match), no exceptions — auth for the whole admin surface is deferred to
 per-controller `@UseGuards(...)`. A new controller under `AdminModule` (or
 any new controller mounted at `/admin/...`) that forgets its own guard is
 **fully public**, no auth at all. Every admin controller today puts
@@ -273,12 +281,19 @@ Waitlist is automatic: if `maxParticipants` reached, status becomes `WAITLIST`. 
 
 **Seats**: `REGISTERED`, `CONFIRMED` and `ATTENDED` all take a seat (`ACTIVE_STATUSES`). Check-in must not free a seat, or the event overbooks while people are in the room. `PUT .../checkin` works only from `REGISTERED`/`CONFIRMED` (under `lockEvent()`); already `ATTENDED` returns the row unchanged with no webhook; `WAITLIST`/`CANCELLED` → `409`. `PATCH .../status` to `ATTENDED` from `WAITLIST` goes through the normal capacity check.
 
-### Event status is not patchable
+### Event status is not writable
 
-`UpdateEventDto` has no `status` — `PATCH /events/:id` with `status` is a `400`
-(`forbidNonWhitelisted`). Transitions only via `PUT /events/:id/publish`,
+Neither `CreateEventDto` nor `UpdateEventDto` has `status` — `POST /events` and
+`PATCH /events/:id` with `status` are a `400` (`forbidNonWhitelisted`); every
+event starts as `DRAFT`. Transitions only via `PUT /events/:id/publish`,
 `/cancel`, `/complete`, which validate (publish: title + future start), cascade
 (cancel: future recurring children), audit and emit the right webhook.
+
+`DELETE /admin/events/:id` (admin only, no machine route) hard-deletes a
+`DRAFT` → `204`, audit `event.deleted`, webhook `event.deleted` (the subscriber
+already got `event.created`). Anything past `DRAFT` → `409`, cancel it instead;
+a draft series with a non-`DRAFT` occurrence → `409` (the FK cascade would take
+it along). Deleting the series root also drops its `RecurrenceRule`.
 
 ### Idempotency (`src/common/idempotency.interceptor.ts`)
 
@@ -395,9 +410,9 @@ secret used as a UTF-8 string (not `whsec_` base64). Legacy
 `X-Webhook-Signature: sha256=<hex(body)>` is still sent — remove it one release
 after 2026-10 (deprecated in the integration guide).
 
-Event types: `event.created`, `event.updated`, `event.cancelled`, `event.published`, `event.completed`, `participant.joined`, `participant.status_changed`, `participant.removed`, `participant.checked_in`.
+Event types: `event.created`, `event.updated`, `event.cancelled`, `event.published`, `event.completed`, `event.deleted` (admin delete of a `DRAFT`), `participant.joined`, `participant.status_changed`, `participant.removed`, `participant.checked_in`.
 
-All nine are emitted from `EventService` (not controllers), so the tenant API
+All ten are emitted from `EventService` (not controllers), so the tenant API
 and `/admin/events` both fire them. Single entry point:
 `WebhookService.notify(clientId, type, item | item[], extra?)` — looks up the
 client's `webhookUrl` (no-op if unset) and builds the payload itself via

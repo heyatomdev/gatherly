@@ -26,7 +26,7 @@ describe('AdminSettingsController audit', () => {
     updateClient: jest.fn(async () => ({ id: 'c1' })),
     regenerateWebhookSecret: jest.fn(async () => ({ id: 'c1', webhookSecret: 'new-secret' })),
   };
-  const audit = { write: jest.fn() };
+  const audit = { writeAsAdmin: jest.fn() };
   const controller = new AdminSettingsController(clients as any, audit as any);
   const req = {
     adminUser: { sub: 'u1' },
@@ -38,33 +38,40 @@ describe('AdminSettingsController audit', () => {
   it('audits a webhookUrl change with the acting user', async () => {
     await controller.updateSettings(req, { webhookUrl: 'https://new.example.com/hook' });
 
-    expect(audit.write).toHaveBeenCalledWith('admin.settings.updated', {
-      userId: 'u1',
-      metadata: { clientId: 'c1', fields: ['webhookUrl'], webhookUrlChanged: true },
+    expect(audit.writeAsAdmin).toHaveBeenCalledWith('settings.updated', req.adminUser, {
+      clientId: 'c1',
+      fields: ['webhookUrl'],
+      webhookUrlChanged: true,
     });
   });
 
   it('audits other settings changes without a webhookUrl flag', async () => {
     await controller.updateSettings(req, { emailActive: true });
 
-    expect(audit.write.mock.calls[0][1].metadata).toEqual({ clientId: 'c1', fields: ['emailActive'] });
+    expect(audit.writeAsAdmin.mock.calls[0][2]).toEqual({ clientId: 'c1', fields: ['emailActive'] });
   });
 
   it('audits webhook secret regeneration without logging the secret', async () => {
     const result = await controller.regenerateWebhookSecret(req);
 
     expect(result.webhookSecret).toBe('new-secret');
-    expect(audit.write).toHaveBeenCalledWith('admin.settings.webhook_secret_regenerated', {
-      userId: 'u1',
-      metadata: { clientId: 'c1' },
+    expect(audit.writeAsAdmin).toHaveBeenCalledWith('settings.webhook_secret_regenerated', req.adminUser, {
+      clientId: 'c1',
     });
-    expect(JSON.stringify(audit.write.mock.calls)).not.toContain('new-secret');
+    expect(JSON.stringify(audit.writeAsAdmin.mock.calls)).not.toContain('new-secret');
+  });
+
+  it('uses event names Bastion accepts (exactly one dot)', async () => {
+    await controller.updateSettings(req, { emailActive: true });
+    await controller.regenerateWebhookSecret(req);
+
+    for (const [event] of audit.writeAsAdmin.mock.calls) expect(event).toMatch(/^[a-z0-9_]+\.[a-z0-9_]+$/);
   });
 
   it('does not audit when the update fails', async () => {
     clients.updateClient.mockRejectedValueOnce(new Error('bad url'));
 
     await expect(controller.updateSettings(req, { webhookUrl: 'https://x.example.com' })).rejects.toThrow();
-    expect(audit.write).not.toHaveBeenCalled();
+    expect(audit.writeAsAdmin).not.toHaveBeenCalled();
   });
 });

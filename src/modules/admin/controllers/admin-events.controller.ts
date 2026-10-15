@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -53,6 +54,13 @@ export class AdminEventsController {
   @Patch(':id')
   update(@Request() req, @Param('id') id: string, @Body() dto: UpdateEventDto) {
     return this.events.updateEvent(id, req.adminClient.id, dto);
+  }
+
+  /** DRAFT only (409 otherwise) — published events are cancelled, not deleted. */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@Request() req, @Param('id') id: string) {
+    return this.events.deleteEvent(id, req.adminClient.id);
   }
 
   @Put(':id/publish')

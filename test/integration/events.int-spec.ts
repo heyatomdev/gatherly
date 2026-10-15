@@ -113,6 +113,25 @@ describe('Events against a real DB (integration)', () => {
     });
   });
 
+  describe('POST /events', () => {
+    const body = {
+      translations: [{ locale: 'it', title: 'Evento' }],
+      authorId: 'author-1',
+      authorName: 'Author',
+      startTime: new Date(Date.now() + 86_400_000).toISOString(),
+    };
+
+    it('creates a DRAFT and rejects `status` — publishing goes through PUT /publish', async () => {
+      const { client, auth } = await createTenant(prisma);
+
+      await http().post('/events').set(auth).send({ ...body, status: 'PUBLISHED' }).expect(400);
+      const { body: created } = await http().post('/events').set(auth).send(body).expect(201);
+
+      expect(created.status).toBe('DRAFT');
+      expect(await prisma.event.count({ where: { clientId: client.id } })).toBe(1);
+    });
+  });
+
   describe('PATCH /events/:id', () => {
     it('rejects `status` in the body — transitions go through /publish, /cancel, /complete', async () => {
       const { client, auth } = await createTenant(prisma);

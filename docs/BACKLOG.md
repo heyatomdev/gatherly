@@ -24,8 +24,11 @@ lo chiede) · **REJECT**.
 | B8 | People: `events_count` include `CANCELLED`/`WAITLIST`; `last_seen` include eventi futuri → VIP/at-risk falsati | `admin-people.service.ts:~87-101` | aperto |
 | B9 | Serie ricorrenti si fermano in silenzio dopo 52 occorrenze / 2 anni; nessun cron le estende | `event.service.ts:67,215-289` | aperto |
 | B10 | Toggle "Email notifications" in Meridian non fa nulla (`Client.emailActive` non è letto da nessuno) | `meridian/app/pages/[tenant]/gatherly/settings.vue:59-69` | aperto |
-| B11 | Docs obsolete: `X-Client-Token` / `POST /clients` pubblico; colonna `Client.token` e route di regen inutilizzate | `../docs/integrations/gatherly.md`, root `CLAUDE.md:248` | aperto |
+| B11 | Docs obsolete: `X-Client-Token` / `POST /clients` pubblico; colonna `Client.token` e route di regen inutilizzate | `../docs/integrations/gatherly.md`, root `CLAUDE.md:248` | docs chiuse (root `a21f902`); drop `Client.token` + route di regen aperto |
 | B12 | `updateEvent` non blocca la riga né rivalida un nuovo `startTime` (passato / dopo `endTime`) | `event.service.ts:342-379` | aperto |
+| B13 | Audit admin `admin.client.*` / `admin.settings.*` con due punti: Bastion accetta solo `resource.action` (400) e `BastionAuditService` ingoia l'errore → nessun audit admin in Bastion. Inoltre `userId` passato a mano anche per admin di altri tenant | `admin-clients.controller.ts`, `admin-settings.controller.ts` | chiuso (`fix/admin-audit-event-lifecycle`): `client.*` / `settings.*` (Bastion salva `gatherly.client.created`, `appSlug: gatherly`) via `writeAsAdmin` |
+| B14 | `POST /events` accetta `status`: `PUBLISHED` salta validazione di publish e `event.published` (gemello di B2 sul create). Meridian lo usava dal bottone "Publish" del form | `CreateEventDto`, `createEvent` | chiuso (`fix/admin-audit-event-lifecycle`): `status` → 400, ogni evento nasce `DRAFT` |
+| B15 | Meridian chiama `DELETE /admin/events/:id`, che non esisteva (404) | `meridian/server/api/[tenant]/gatherly/events/[id].delete.ts` | chiuso (`fix/admin-audit-event-lifecycle`): delete solo `DRAFT`, `409` altrimenti, webhook `event.deleted` |
 
 Audit: il cambio di `webhookUrl` e la rigenerazione del secret lato tenant
 (`admin-settings.controller.ts:53-62`) non sono auditati — incluso in `5851f9d`.
