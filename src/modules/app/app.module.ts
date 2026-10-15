@@ -44,8 +44,8 @@ import {
       inject: [ConfigService],
       useFactory: (config: ConfigService) => [
         {
-          ttl: config.get<number>('THROTTLE_TTL_MS') ?? 60_000,
-          limit: config.get<number>('THROTTLE_LIMIT') ?? 100,
+          ttl: config.getOrThrow<number>('THROTTLE_TTL_MS'),
+          limit: config.getOrThrow<number>('THROTTLE_LIMIT'),
         },
       ],
     }),

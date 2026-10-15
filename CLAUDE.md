@@ -340,7 +340,8 @@ Platform standard (`../docs/standards/api.md`), all from the package — don't r
 - **Bootstrap** (`main.ts`): `setupHttpApp()` — shutdown hooks, `trust proxy` from
   `TRUST_PROXY_HOPS`, helmet, CORS allowlist from `CORS_ORIGINS` (disallowed origin → no CORS
   headers, never a 500; `Idempotency-Key` allowed), 1mb JSON limit, global `ValidationPipe`
-  (whitelist + forbidNonWhitelisted + transform). `rawBody: true` stays on `NestFactory.create`.
+  (whitelist + forbidNonWhitelisted + transform). No `rawBody`: Gatherly has no signed inbound
+  webhooks (turn it on in `NestFactory.create` only if one is added).
 - **Envelope**: `TransformInterceptor` as `APP_INTERCEPTOR` — 2xx bodies become `{ data }`;
   `paginate()` results pass through as `{ data, meta }`.
 - **Errors**: `AllExceptionsFilter` as `APP_FILTER` — `{ statusCode, code, message, errors?,
@@ -521,7 +522,10 @@ bodies. Need different ones (e.g. URLs with tokens)? `loggerParams({ serializers
   is never adopted nor echoed; if it matches `[A-Za-z0-9._-]{1,64}` it is
   logged as `clientRequestId`, otherwise dropped. There is no local
   request-id middleware any more.
-- `/health*` (live and ready) is never access-logged (prefix match).
+- `/health*` (live and ready) is never access-logged (prefix match), and `@SkipThrottle()`:
+  probes never share the per-IP bucket with real traffic.
+- Webhook delivery logs carry the delivery id and the target **host** only: a tenant can put a
+  token in the query string of its `webhookUrl`.
 - Every line has `service: "gatherly"`.
 
 ## Metrics
