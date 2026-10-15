@@ -168,7 +168,7 @@ describe('WebhookService queue', () => {
     prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
     prisma.webhookDelivery.findMany.mockResolvedValue([row()]);
     // What axios hands back when webhookAgent's lookup rejects: an AxiosError wrapping the guard error.
-    const blocked = new WebhookUrlError('current.example.test resolves to a non-public address');
+    const blocked = new WebhookUrlError('DNS_NON_PUBLIC');
     const err = AxiosError.from(blocked, blocked.code);
     expect(err.cause).toBe(blocked);
     http.post.mockReturnValue(throwError(() => err));

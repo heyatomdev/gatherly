@@ -53,6 +53,13 @@ describe('HTTP contract (e2e)', () => {
     jest.spyOn(prisma.client, 'findUnique').mockResolvedValue(adminClient as any);
   });
 
+  it('paginated lists come back as { data, meta }, not wrapped again', async () => {
+    jest.spyOn(prisma, '$transaction').mockResolvedValue([[{ id: 'e1' }], 21] as any);
+    const res = await admin(request(app.getHttpServer()).get('/admin/events?page=2&limit=10')).expect(200);
+
+    expect(res.body).toEqual({ data: [{ id: 'e1' }], meta: { total: 21, page: 2, limit: 10, totalPages: 3 } });
+  });
+
   it('400 validation → VALIDATION_FAILED with errors[] and the request id', async () => {
     const res = await admin(request(app.getHttpServer()).post('/admin/tags').send({ bogus: 1 })).expect(400);
 

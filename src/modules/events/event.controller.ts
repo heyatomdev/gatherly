@@ -14,7 +14,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
-import { ApiPaginatedResponse, PaginatedResult } from '@heyatom/nest-common';
+import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { EventService } from './event.service';
 import { IdempotencyInterceptor } from '@/common/idempotency.interceptor';
 import {
@@ -44,7 +44,7 @@ export class EventController {
   @Get()
   @ApiPaginatedResponse()
   @ApiOperation({ summary: 'List events for client with optional filters and pagination' })
-  async getEvents(@Request() req, @Query() query: GetEventsQueryDto): Promise<PaginatedResult<any>> {
+  async getEvents(@Request() req, @Query() query: GetEventsQueryDto) {
     return this.eventService.getEventsByClient(req.client.id, query);
   }
 
@@ -65,7 +65,7 @@ export class EventController {
     @Request() req,
     @Param('eventId') eventId: string,
     @Query() query: GetParticipantsQueryDto,
-  ): Promise<PaginatedResult<any>> {
+  ) {
     return this.eventService.getParticipants(eventId, req.client.id, query);
   }
 

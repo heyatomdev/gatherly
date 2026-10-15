@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/modules/prisma/prisma.service';
-import { PaginatedResult, paginate } from '@heyatom/nest-common';
+import { paginate } from '@heyatom/nest-common';
 import { PeopleQueryDto } from './dto/people-query.dto';
 
 @Injectable()
@@ -28,7 +28,7 @@ export class AdminPeopleService {
     throw new BadRequestException('Invalid person key format');
   }
 
-  async listPeople(clientId: string, query: PeopleQueryDto): Promise<PaginatedResult<any>> {
+  async listPeople(clientId: string, query: PeopleQueryDto) {
     const { search, segment, minEvents = 1, limit } = query;
     const offset = query.skip;
     const vipThreshold = this.config.get<number>('VIP_THRESHOLD') ?? 5;

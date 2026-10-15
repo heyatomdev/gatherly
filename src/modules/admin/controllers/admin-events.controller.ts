@@ -14,7 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ApiPaginatedResponse, PaginatedResult } from '@heyatom/nest-common';
+import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { EventService } from '@/modules/events/event.service';
@@ -33,7 +33,7 @@ export class AdminEventsController {
 
   @Get()
   @ApiPaginatedResponse()
-  list(@Request() req, @Query() query: GetEventsQueryDto): Promise<PaginatedResult<any>> {
+  list(@Request() req, @Query() query: GetEventsQueryDto) {
     return this.events.getEventsByClient(req.adminClient.id, query);
   }
 

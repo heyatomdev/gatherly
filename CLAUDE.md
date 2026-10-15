@@ -352,9 +352,10 @@ Platform standard (`../docs/standards/api.md`), all from the package — don't r
   `REGISTRATION_CLOSED`, `ALREADY_REGISTERED`, `EVENT_FULL`, `TENANT_TAKEN`,
   `WEBHOOK_TARGET_BLOCKED` (400). Meridian reads `errors` on validation 400s.
 - **Pagination**: list query DTOs **extend** `PageParams` (`page` 1, `limit` 20, max 100,
-  `skip` getter — lost on spread); services return `paginate(data, total, query)`; controllers
-  get `@ApiPaginatedResponse()` and an explicit `Promise<PaginatedResult<…>>` return type (with
-  `declaration: true`, TS2883 otherwise). Paginated: `/events`, `/events/:id/participants`, the
+  `skip` getter — lost on spread); services return `paginate(data, total, query)` and controllers
+  return it **as is** with `@ApiPaginatedResponse()`. The envelope recognises it by a marker: a
+  copy (spread, class-transformer, `structuredClone`) or a hand-built `{ data, meta }` gets
+  wrapped again in `{ data }`. Paginated: `/events`, `/events/:id/participants`, the
   same under `/admin`, `/admin/people`. Other lists aren't — paginating them is a contract change.
 - **Swagger**: `ENABLE_SWAGGER` resolved in `validate()` by `swaggerEnabled()` from the raw
   `NODE_ENV` (unset → off); `setupSwagger()` with title `Gatherly`, version `APP_VERSION`
@@ -484,7 +485,7 @@ NAT64/`::/96`/`2001:db8::/32`, or no answer) → 400 with the package's
 `WebhookUrlError` message. At send time `checkWebhookUrl` re-checks the stored
 URL and the request goes through the package's `webhookAgent`, whose DNS
 lookup refuses private addresses (DNS rebinding). Either refusal is terminal:
-straight to `FAILED`, no retries (`isBlockedTarget()` in `webhook.service.ts`
+straight to `FAILED`, no retries (the package's `isWebhookTargetBlocked()`
 also matches the agent's refusal wrapped by axios: `code`
 `WEBHOOK_TARGET_BLOCKED`, `cause` `WebhookUrlError`). No redirects, 64KB response cap, 10s total
 deadline. `lastError` is `HTTP <status>` or `Delivery failed` — never the raw
@@ -511,9 +512,9 @@ to the old local HMAC).
 
 nestjs-pino, configured by `loggerConfig()` (`src/configs/logger.config.ts`):
 `loggerParams()` from `@heyatom/nest-common` (level from `LOG_LEVEL`, pretty
-unless `NODE_ENV=production`) plus gatherly's trimmed serializers — request
-logs carry `req.{id,method,url,ip}` and `res.statusCode`, never headers or
-bodies.
+unless `NODE_ENV=production`), its default serializers — request logs carry
+`req.{id,method,url,remoteAddress}` and `res.statusCode`, never headers or
+bodies. Need different ones (e.g. URLs with tokens)? `loggerParams({ serializers })`.
 
 - **Request id is always server-generated** (UUID, the package's `genReqId`)
   and returned as `X-Request-Id`, errors included. A caller's `X-Request-Id`
@@ -525,7 +526,7 @@ bodies.
 
 ## Metrics
 
-Comes from `@heyatom/nest-common/metrics`: `MetricsModule.forRootAsync({ app: 'gatherly', port: METRICS_PORT })` in `AppModule` (global). `GET /metrics` (Prometheus, `@prometheus-io/client`) is served by the package's `MetricsServer` on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`). One render is cached for 10s (`MetricsServer.SCRAPE_CACHE_MS`), so scrapes closer than that see the same values. Only the domain gauges are gatherly code: `WebhookMetrics` (`src/modules/webhook/webhook.metrics.ts`) registers them on the package's `MetricsService.registry` — new domain metrics go there the same way, `gatherly_` prefix.
+Comes from `@heyatom/nest-common/metrics`: `MetricsModule.forRootAsync({ app: 'gatherly', port: METRICS_PORT })` in `AppModule` (global). `GET /metrics` (Prometheus, `@prometheus-io/client`) is served by the package's `MetricsServer` on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`). Listens on `::` (IPv4 + IPv6). A request the client abandons before the response is counted with `status="499"`. One render is cached for 10s (`MetricsServer.SCRAPE_CACHE_MS`), so scrapes closer than that see the same values. Only the domain gauges are gatherly code: `WebhookMetrics` (`src/modules/webhook/webhook.metrics.ts`) registers them on the package's `MetricsService.registry` — new domain metrics go there the same way, `gatherly_` prefix.
 
 - **Isolation is the network's job**: never publish 9091 from the container, nginx never proxies it. Prometheus scrapes `gatherly:9091` on the internal Docker network.
 - `MetricsMiddleware` (all routes, applied by the package's `MetricsModule` itself) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.

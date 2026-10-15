@@ -2,7 +2,6 @@ import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { PARAMS_PROVIDER_TOKEN } from 'nestjs-pino';
-import type { Options } from 'pino-http';
 import request = require('supertest');
 import { MetricsServer } from '@heyatom/nest-common/metrics';
 import { BastionJwksService } from '@heyatom/bastion-client/nest';
@@ -29,7 +28,7 @@ describe('Observability (e2e)', () => {
         inject: [ConfigService],
         factory: (config: ConfigService) => {
           const params = loggerConfig(config);
-          const { transport, ...opts } = params.pinoHttp as Options;
+          const { transport, ...opts } = params.pinoHttp;
           const stream = { write: (line: string) => void logLines.push(JSON.parse(line)) };
           return { ...params, pinoHttp: [opts, stream] };
         },
