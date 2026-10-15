@@ -17,7 +17,7 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PageParams } from '@/common/pagination';
+import { PageParams } from '@heyatom/nest-common';
 
 export class EventTranslationDto {
   @ApiProperty({ example: 'it' })

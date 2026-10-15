@@ -22,7 +22,7 @@ import {
   GetParticipantsQueryDto,
   BulkAddParticipantsDto,
 } from './dto/event.dto';
-import { PaginatedResult, paginate } from '@/common/pagination';
+import { PaginatedResult, paginate } from '@heyatom/nest-common';
 
 /**
  * Statuses that take a seat against maxParticipants. ATTENDED counts: a
@@ -146,10 +146,10 @@ export class EventService {
    */
   private assertAcceptsRegistrations(event: LockedEvent) {
     if (event.status !== 'PUBLISHED') {
-      throw new ConflictException(`Event is ${event.status}, not open for registration`);
+      throw new ConflictException({ code: 'REGISTRATION_CLOSED', message: `Event is ${event.status}, not open for registration` });
     }
     if ((event.endTime ?? event.startTime) <= new Date()) {
-      throw new ConflictException('Event has already ended, not open for registration');
+      throw new ConflictException({ code: 'REGISTRATION_CLOSED', message: 'Event has already ended, not open for registration' });
     }
   }
 
@@ -585,7 +585,7 @@ export class EventService {
       return participant;
     } catch (error: any) {
       if (error.code === 'P2002') {
-        throw new ConflictException('Participant already registered for this event');
+        throw new ConflictException({ code: 'ALREADY_REGISTERED', message: 'Participant already registered for this event' });
       }
       throw error;
     }
@@ -699,7 +699,7 @@ export class EventService {
         event.maxParticipants != null &&
         (await this.countActive(tx, eventId)) >= event.maxParticipants
       ) {
-        throw new ConflictException('Event is full');
+        throw new ConflictException({ code: 'EVENT_FULL', message: 'Event is full' });
       }
 
       const result = await tx.participant.update({

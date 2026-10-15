@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/modules/prisma/prisma.service';
+import { paginate } from '@heyatom/nest-common';
 import { PeopleQueryDto } from './dto/people-query.dto';
 
 @Injectable()
@@ -28,8 +29,8 @@ export class AdminPeopleService {
   }
 
   async listPeople(clientId: string, query: PeopleQueryDto) {
-    const { search, segment, minEvents = 1, page = 1, limit = 20 } = query;
-    const offset = (page - 1) * limit;
+    const { search, segment, minEvents = 1, limit } = query;
+    const offset = query.skip;
     const vipThreshold = this.config.get<number>('VIP_THRESHOLD') ?? 5;
     const atRiskDays = this.config.get<number>('AT_RISK_DAYS') ?? 120;
 
@@ -115,8 +116,8 @@ export class AdminPeopleService {
 
     const total = rows[0]?.total_count ?? 0;
 
-    return {
-      data: rows.map((r) => ({
+    return paginate(
+      rows.map((r) => ({
         key: r.key,
         displayName: r.display_name,
         email: r.email,
@@ -128,13 +129,9 @@ export class AdminPeopleService {
         noShowCount: r.no_show_count,
         segment: r.segment,
       })),
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+      total,
+      query,
+    );
   }
 
   async getPersonProfile(clientId: string, key: string) {

@@ -1,6 +1,7 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { PageParams } from '@heyatom/nest-common';
 
 export enum PersonSegment {
   NEW = 'new',
@@ -9,7 +10,7 @@ export enum PersonSegment {
   AT_RISK = 'at_risk',
 }
 
-export class PeopleQueryDto {
+export class PeopleQueryDto extends PageParams {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -26,19 +27,4 @@ export class PeopleQueryDto {
   @IsInt()
   @Min(1)
   minEvents?: number = 1;
-
-  @ApiPropertyOptional({ default: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
-  @ApiPropertyOptional({ default: 20, maximum: 100 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 20;
 }

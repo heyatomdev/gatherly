@@ -13,7 +13,7 @@ Multi-tenant event management API. Clients (gyms, gaming orgs, etc.) call the AP
 - **ORM**: Prisma 7 + PostgreSQL
 - **Package manager**: pnpm (enforced — `npm install` fails)
 - **Validation**: class-validator + class-transformer (global ValidationPipe with whitelist + transform)
-- **Docs**: Swagger at `/docs`
+- **Docs**: Swagger at `/docs` when `ENABLE_SWAGGER` (see HTTP contract)
 - **Scheduling**: `@nestjs/schedule` (cron jobs)
 - **HTTP client**: `@nestjs/axios` (webhook delivery)
 
@@ -42,6 +42,8 @@ defaults live there only; `main.ts` reads them through `ConfigService`.
 | `NODE_ENV` | `development` | No |
 | `PORT` | `3000` | No |
 | `CORS_ORIGINS` | `http://localhost:3000` (comma-separated) | No |
+| `TRUST_PROXY_HOPS` | `0` | No (`1` behind nginx — the IP throttler keys on `req.ip`) |
+| `ENABLE_SWAGGER` | `true` only if `NODE_ENV` is explicitly `development`/`test` | No |
 | `LOG_LEVEL` | `info` | No |
 | `BASTION_URL` | — | Yes |
 | `BASTION_APP_SLUG` | — | Yes |
@@ -331,6 +333,34 @@ Upserts by `(eventId, locale)` — existing locale is updated, new locale is cre
 
 ---
 
+## HTTP contract (`@heyatom/nest-common`)
+
+Platform standard (`../docs/standards/api.md`), all from the package — don't re-implement locally:
+
+- **Bootstrap** (`main.ts`): `setupHttpApp()` — shutdown hooks, `trust proxy` from
+  `TRUST_PROXY_HOPS`, helmet, CORS allowlist from `CORS_ORIGINS` (disallowed origin → no CORS
+  headers, never a 500; `Idempotency-Key` allowed), 1mb JSON limit, global `ValidationPipe`
+  (whitelist + forbidNonWhitelisted + transform). `rawBody: true` stays on `NestFactory.create`.
+- **Envelope**: `TransformInterceptor` as `APP_INTERCEPTOR` — 2xx bodies become `{ data }`;
+  `paginate()` results pass through as `{ data, meta }`.
+- **Errors**: `AllExceptionsFilter` as `APP_FILTER` — `{ statusCode, code, message, errors?,
+  requestId }`. Validation → `400 VALIDATION_FAILED` + `errors[]`; unknown errors → generic
+  `500 INTERNAL_ERROR`; Prisma `P2002`/`P2003` → `409 CONFLICT`, `P2025` → `404`. So **don't
+  catch P2002 just to throw a code-less 409** — catch it only inside a `$transaction` or to give
+  a specific code. Throw domain errors as `new XException({ code: 'UPPER_SNAKE', message })`;
+  current codes: `IDEMPOTENCY_IN_PROGRESS`, `IDEMPOTENCY_KEY_REUSED` (422),
+  `REGISTRATION_CLOSED`, `ALREADY_REGISTERED`, `EVENT_FULL`, `TENANT_TAKEN`,
+  `WEBHOOK_TARGET_BLOCKED` (400). Meridian reads `errors` on validation 400s.
+- **Pagination**: list query DTOs **extend** `PageParams` (`page` 1, `limit` 20, max 100,
+  `skip` getter — lost on spread); services return `paginate(data, total, query)` and controllers
+  return it **as is** with `@ApiPaginatedResponse()`. The envelope recognises it by a marker: a
+  copy (spread, class-transformer, `structuredClone`) or a hand-built `{ data, meta }` gets
+  wrapped again in `{ data }`. Paginated: `/events`, `/events/:id/participants`, the
+  same under `/admin`, `/admin/people`. Other lists aren't — paginating them is a contract change.
+- **Swagger**: `ENABLE_SWAGGER` resolved in `validate()` by `swaggerEnabled()` from the raw
+  `NODE_ENV` (unset → off); `setupSwagger()` with title `Gatherly`, version `APP_VERSION`
+  (`src/common/app-version.ts`, `readAppVersion()`), UI `/docs`, JSON `/docs-json`.
+
 ## API Endpoints
 
 ### Clients — `/admin/clients` (SUPER_ADMIN only, Bastion user JWT)
@@ -349,7 +379,7 @@ No more public `/clients` — see "Client management — no longer self-service"
 | `GET` | `/admin/clients/:id/webhook-deliveries?status=` | Webhook delivery attempts |
 
 `tenantId` is `@unique` on `Client` — a duplicate on create/update returns
-`409 Conflict`, not a 500.
+`409 TENANT_TAKEN`, not a 500.
 
 ### Categories (auth required)
 
@@ -446,14 +476,21 @@ with a plain `findMany` — that's how double sends happened.
 `title`/`description` in the default locale, tag slugs, no `participants`,
 no `translations` array. Don't send raw `EVENT_INCLUDE` rows (participant PII).
 
-**SSRF guard** (`webhook-url.ts`): `webhookUrl` must be `https`. On save
-(`/admin/settings`, `/admin/clients`) the host is resolved and
-private/loopback/link-local/ULA/metadata/NAT64 addresses → 400. At send time
-the URL is re-checked and the request goes through `webhookAgent`, whose DNS
-lookup refuses private addresses (stored URLs, DNS rebinding). No redirects,
-64KB response cap, 10s total deadline. `lastError` is `HTTP <status>` or
-`Delivery failed` — never the raw socket error. Pre-existing `http://` URLs
-now fail delivery until updated.
+**SSRF guard** — lives in `@heyatom/nest-common/webhooks` (shared with herald
+and bastion; no local copy, fix rules there). `webhookUrl` must be `https`, no
+credentials in the URL. On save (`/admin/settings`, `/admin/clients`, both via
+`ClientService`) `assertPublicWebhookUrl` resolves the host and refuses it
+unless **every** address is public (private/loopback/link-local/ULA/metadata/
+NAT64/`::/96`/`2001:db8::/32`, or no answer) → 400 with the package's
+`WebhookUrlError` message. At send time `checkWebhookUrl` re-checks the stored
+URL and the request goes through the package's `webhookAgent`, whose DNS
+lookup refuses private addresses (DNS rebinding). Either refusal is terminal:
+straight to `FAILED`, no retries (the package's `isWebhookTargetBlocked()`
+also matches the agent's refusal wrapped by axios: `code`
+`WEBHOOK_TARGET_BLOCKED`, `cause` `WebhookUrlError`). No redirects, 64KB response cap, 10s total
+deadline. `lastError` is `HTTP <status>` or `Delivery failed` — never the raw
+socket error. Signing is the package's `signStandardWebhook` (byte-identical
+to the old local HMAC).
 
 ---
 
@@ -471,12 +508,28 @@ now fail delivery until updated.
 
 ---
 
+## Logging
+
+nestjs-pino, configured by `loggerConfig()` (`src/configs/logger.config.ts`):
+`loggerParams()` from `@heyatom/nest-common` (level from `LOG_LEVEL`, pretty
+unless `NODE_ENV=production`), its default serializers — request logs carry
+`req.{id,method,url,remoteAddress}` and `res.statusCode`, never headers or
+bodies. Need different ones (e.g. URLs with tokens)? `loggerParams({ serializers })`.
+
+- **Request id is always server-generated** (UUID, the package's `genReqId`)
+  and returned as `X-Request-Id`, errors included. A caller's `X-Request-Id`
+  is never adopted nor echoed; if it matches `[A-Za-z0-9._-]{1,64}` it is
+  logged as `clientRequestId`, otherwise dropped. There is no local
+  request-id middleware any more.
+- `/health*` (live and ready) is never access-logged (prefix match).
+- Every line has `service: "gatherly"`.
+
 ## Metrics
 
-`GET /metrics` (Prometheus, `@prometheus-io/client`) is served by `MetricsServer` (`src/modules/metrics/`) on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`).
+Comes from `@heyatom/nest-common/metrics`: `MetricsModule.forRootAsync({ app: 'gatherly', port: METRICS_PORT })` in `AppModule` (global). `GET /metrics` (Prometheus, `@prometheus-io/client`) is served by the package's `MetricsServer` on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`). Listens on `::` (IPv4 + IPv6). A request the client abandons before the response is counted with `status="499"`. One render is cached for 10s (`MetricsServer.SCRAPE_CACHE_MS`), so scrapes closer than that see the same values. Only the domain gauges are gatherly code: `WebhookMetrics` (`src/modules/webhook/webhook.metrics.ts`) registers them on the package's `MetricsService.registry` — new domain metrics go there the same way, `gatherly_` prefix.
 
 - **Isolation is the network's job**: never publish 9091 from the container, nginx never proxies it. Prometheus scrapes `gatherly:9091` on the internal Docker network.
-- `MetricsMiddleware` (all routes, in `AppModule.configure`) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.
+- `MetricsMiddleware` (all routes, applied by the package's `MetricsModule` itself) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.
 - **`gatherly_webhook_deliveries{status}`** (gauge): `webhook_deliveries` rows per `WebhookDeliveryStatus` (`PENDING`/`DELIVERED`/`FAILED`), every value always emitted, 0 if absent. `DELIVERED` drops weekly (cleanup cron deletes old rows), so read trends, not absolutes.
 - **`gatherly_webhook_deliveries_overdue`** (gauge): `PENDING` rows with `nextRetryAt` in the past — the "queue is stuck" signal. `PENDING` is the only non-terminal status (`FAILED` is final after `maxAttempts`, back to `PENDING` only via manual retry). `WebhookService.processQueue` runs every minute (50 rows per tick), so short non-zero blips are normal. Suggested alert: `gatherly_webhook_deliveries_overdue > 0 for 15m`. Served by the `(status, nextRetryAt)` index.
 - Both gauges are computed lazily in `collect()` (no query until scraped); a DB error logs `warn` and keeps the previous value instead of failing the scrape.

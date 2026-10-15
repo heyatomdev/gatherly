@@ -1,67 +1,44 @@
 import 'dotenv/config';
+import { Logger as NestLogger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './modules/app/app.module';
-import { ValidationPipe } from "@nestjs/common";
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
-import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
-import { TransformInterceptor } from './interceptors/transform.interceptor';
+import { parseCorsOrigins, setupHttpApp, setupSwagger } from '@heyatom/nest-common';
+import { AppModule } from './modules/app/app.module';
+import { APP_VERSION } from './common/app-version';
 
 async function bootstrap() {
-
-  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
   app.useLogger(app.get(Logger));
-  app.enableShutdownHooks();
-
-  app.use(helmet());
 
   // Defaults live in config.validation.ts — single source of truth.
   const config = app.get(ConfigService);
-  const port = config.get<number>('PORT');
-  const isProduction = config.get<string>('NODE_ENV') === 'production';
-  const allowedOrigins = config.get<string>('CORS_ORIGINS', '').split(',').map((o) => o.trim()).filter(Boolean);
+  const port = config.getOrThrow<number>('PORT');
 
-  app.enableCors({
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS: origin '${origin}' not allowed`));
-      }
-    },
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
+  // Shutdown hooks, trust proxy, helmet, CORS allowlist, 1mb JSON limit, global ValidationPipe.
+  setupHttpApp(app, {
+    trustProxyHops: config.getOrThrow<number>('TRUST_PROXY_HOPS'),
+    corsOrigins: parseCorsOrigins(config.get<string>('CORS_ORIGINS')),
+    corsAllowedHeaders: ['Idempotency-Key'],
   });
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-  app.useGlobalInterceptors(new TransformInterceptor());
-
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('')
-    .setDescription('Application API documentation')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-
-  if (!isProduction) {
-    const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('docs', app, document);
+  // Resolved once in config validation (swaggerEnabled): explicit ENABLE_SWAGGER, else dev/test only.
+  const swagger = config.get<string>('ENABLE_SWAGGER') === 'true';
+  if (swagger) {
+    setupSwagger(app, { title: 'Gatherly', version: APP_VERSION, configure: (b) => b.addBearerAuth() });
   }
 
   await app.listen(port);
-  const pinoLogger = app.get(Logger);
-  pinoLogger.log(`Application running on port ${port}`, 'Bootstrap');
-  if (!isProduction) {
-    pinoLogger.log(`Swagger: http://localhost:${port}/docs`, 'Bootstrap');
+  const logger = app.get(Logger);
+  logger.log(`Application running on port ${port}`, 'Bootstrap');
+  if (swagger) {
+    logger.log(`Swagger: http://localhost:${port}/docs`, 'Bootstrap');
   }
 }
 
-bootstrap();
+bootstrap().catch((err: Error) => {
+  // The pino logger may not exist yet (config validation, DI errors).
+  new NestLogger('Bootstrap').error(`Bootstrap failed: ${err.message}`, err.stack);
+  process.exit(1);
+});

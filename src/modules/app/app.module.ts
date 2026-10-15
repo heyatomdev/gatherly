@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -9,8 +9,7 @@ import {EventModule} from "@/modules/events/event.module";
 import {CategoryModule} from "@/modules/categories/category.module";
 import {TagModule} from "@/modules/tags/tag.module";
 import { HealthModule } from '@/modules/health/health.module';
-import { MetricsModule } from '@/modules/metrics/metrics.module';
-import { MetricsMiddleware } from '@/modules/metrics/metrics.middleware';
+import { MetricsModule } from '@heyatom/nest-common/metrics';
 
 import { BastionJwtGuard } from '@/modules/bastion/guards/bastion-jwt.guard';
 import { BastionModule } from '@heyatom/bastion-client/nest';
@@ -19,9 +18,10 @@ import { BastionModule } from '@heyatom/bastion-client/nest';
 const splitList = (raw?: string): string[] | undefined =>
     raw === undefined ? undefined : raw.split(',').map((s) => s.trim()).filter(Boolean);
 import { AdminModule } from '@/modules/admin/admin.module';
-import { RequestIdMiddleware } from '@/middleware/request-id.middleware';
 import { validate } from '@/configs/config.validation';
-import { APP_GUARD } from '@nestjs/core';
+import { loggerConfig } from '@/configs/logger.config';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AllExceptionsFilter, TransformInterceptor } from '@heyatom/nest-common';
 
 @Module({
     controllers: [],
@@ -39,29 +39,9 @@ import { APP_GUARD } from '@nestjs/core';
                 limit: config.get<number>('THROTTLE_LIMIT') ?? 100,
             }]),
         }),
-        LoggerModule.forRoot({
-            pinoHttp: {
-                level: process.env.LOG_LEVEL ?? (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
-                transport:
-                  process.env.NODE_ENV !== 'production'
-                    ? { target: 'pino-pretty', options: { singleLine: true, colorize: true } }
-                    : undefined,
-                redact: {
-                    paths: [
-                        'req.headers.authorization',
-                        'req.headers.cookie',
-                    ],
-                    remove: true,
-                },
-                genReqId: (req) =>
-                  (req.headers['x-request-id'] as string) ?? crypto.randomUUID(),
-                serializers: {
-                    req: (req) => ({ method: req.method, url: req.url, ip: req.remoteAddress }),
-                    res: (res) => ({ statusCode: res.statusCode }),
-                },
-                customProps: () => ({ service: 'gatherly' }),
-                autoLogging: { ignore: (req) => req.url === '/health' },
-            },
+        LoggerModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: loggerConfig,
         }),
         // Scheduling for jobs
         ScheduleModule.forRoot(),
@@ -80,7 +60,15 @@ import { APP_GUARD } from '@nestjs/core';
             }),
         }),
         HealthModule,
-        MetricsModule,
+        // Own server on METRICS_PORT; applies MetricsMiddleware to every route itself
+        // (a middleware, not an interceptor, so guard 401s and throttler 429s are counted).
+        MetricsModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                app: 'gatherly',
+                port: config.getOrThrow<number>('METRICS_PORT'),
+            }),
+        }),
         ClientModule,
         EventModule,
         CategoryModule,
@@ -90,14 +78,11 @@ import { APP_GUARD } from '@nestjs/core';
     providers: [
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: BastionJwtGuard },
+        // `{ data }` envelope; paginate() results pass through as `{ data, meta }`.
+        { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
+        // api.md §3 error body: { statusCode, code, message, errors?, requestId }; Prisma P2002/P2003 → 409, P2025 → 404.
+        { provide: APP_FILTER, useClass: AllExceptionsFilter },
     ],
 })
 
-export class AppModule implements NestModule {
-    configure(consumer: MiddlewareConsumer): void {
-        // MetricsMiddleware is a middleware and not an APP_INTERCEPTOR on purpose:
-        // interceptors run after the guards, so 401s and 429s would never be counted.
-        consumer.apply(RequestIdMiddleware, MetricsMiddleware).forRoutes('*');
-    }
-}
-
+export class AppModule {}

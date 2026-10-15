@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/modules/prisma/prisma.service';
-import { getAppVersion } from '@/common/app-version';
+import { APP_VERSION } from '@/common/app-version';
 import { BreakdownBy, TimeseriesMetric } from './dto/analytics-query.dto';
 
 /** Length of the forward-looking series behind the `upcoming` figure. Two weeks
@@ -163,7 +163,7 @@ export class AdminAnalyticsService {
           upcomingDailyRows,
         ),
       },
-      version: getAppVersion(),
+      version: APP_VERSION,
     };
   }
 
