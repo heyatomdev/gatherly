@@ -476,6 +476,22 @@ to the old local HMAC).
 
 ---
 
+## Logging
+
+nestjs-pino, configured by `loggerConfig()` (`src/configs/logger.config.ts`):
+`loggerParams()` from `@heyatom/nest-common` (level from `LOG_LEVEL`, pretty
+unless `NODE_ENV=production`) plus gatherly's trimmed serializers — request
+logs carry `req.{id,method,url,ip}` and `res.statusCode`, never headers or
+bodies.
+
+- **Request id is always server-generated** (UUID, the package's `genReqId`)
+  and returned as `X-Request-Id`, errors included. A caller's `X-Request-Id`
+  is never adopted nor echoed; if it matches `[A-Za-z0-9._-]{1,64}` it is
+  logged as `clientRequestId`, otherwise dropped. There is no local
+  request-id middleware any more.
+- `/health*` (live and ready) is never access-logged (prefix match).
+- Every line has `service: "gatherly"`.
+
 ## Metrics
 
 Comes from `@heyatom/nest-common/metrics`: `MetricsModule.forRootAsync({ app: 'gatherly', port: METRICS_PORT })` in `AppModule` (global). `GET /metrics` (Prometheus, `@prometheus-io/client`) is served by the package's `MetricsServer` on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`). One render is cached for 10s (`MetricsServer.SCRAPE_CACHE_MS`), so scrapes closer than that see the same values. Only the domain gauges are gatherly code: `WebhookMetrics` (`src/modules/webhook/webhook.metrics.ts`) registers them on the package's `MetricsService.registry` — new domain metrics go there the same way, `gatherly_` prefix.

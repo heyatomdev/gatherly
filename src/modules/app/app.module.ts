@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -18,8 +18,8 @@ import { BastionModule } from '@heyatom/bastion-client/nest';
 const splitList = (raw?: string): string[] | undefined =>
     raw === undefined ? undefined : raw.split(',').map((s) => s.trim()).filter(Boolean);
 import { AdminModule } from '@/modules/admin/admin.module';
-import { RequestIdMiddleware } from '@/middleware/request-id.middleware';
 import { validate } from '@/configs/config.validation';
+import { loggerConfig } from '@/configs/logger.config';
 import { APP_GUARD } from '@nestjs/core';
 
 @Module({
@@ -38,29 +38,9 @@ import { APP_GUARD } from '@nestjs/core';
                 limit: config.get<number>('THROTTLE_LIMIT') ?? 100,
             }]),
         }),
-        LoggerModule.forRoot({
-            pinoHttp: {
-                level: process.env.LOG_LEVEL ?? (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
-                transport:
-                  process.env.NODE_ENV !== 'production'
-                    ? { target: 'pino-pretty', options: { singleLine: true, colorize: true } }
-                    : undefined,
-                redact: {
-                    paths: [
-                        'req.headers.authorization',
-                        'req.headers.cookie',
-                    ],
-                    remove: true,
-                },
-                genReqId: (req) =>
-                  (req.headers['x-request-id'] as string) ?? crypto.randomUUID(),
-                serializers: {
-                    req: (req) => ({ method: req.method, url: req.url, ip: req.remoteAddress }),
-                    res: (res) => ({ statusCode: res.statusCode }),
-                },
-                customProps: () => ({ service: 'gatherly' }),
-                autoLogging: { ignore: (req) => req.url === '/health' },
-            },
+        LoggerModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: loggerConfig,
         }),
         // Scheduling for jobs
         ScheduleModule.forRoot(),
@@ -100,9 +80,4 @@ import { APP_GUARD } from '@nestjs/core';
     ],
 })
 
-export class AppModule implements NestModule {
-    configure(consumer: MiddlewareConsumer): void {
-        consumer.apply(RequestIdMiddleware).forRoutes('*');
-    }
-}
-
+export class AppModule {}
