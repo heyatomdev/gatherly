@@ -1,5 +1,6 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNumber, IsOptional, IsString, validateSync } from 'class-validator';
+import { IsEnum, IsIn, IsNumber, IsOptional, IsString, validateSync } from 'class-validator';
+import { swaggerEnabled } from '@heyatom/nest-common';
 
 enum LogLevel {
   Trace = 'trace',
@@ -26,6 +27,12 @@ class EnvironmentVariables {
 
   @IsNumber()
   PORT: number = 3000;
+
+  // Swagger UI on /docs. Unset → on only when NODE_ENV is explicitly development/test
+  // (resolved in validate(), so an unset NODE_ENV fails closed).
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  ENABLE_SWAGGER?: string;
 
   @IsString()
   DATABASE_URL!: string;
@@ -116,6 +123,11 @@ export function validate(config: Record<string, unknown>) {
       .join('; ');
     throw new Error(`Config validation failed — ${messages}`);
   }
+
+  // From the raw env, not the class default: NODE_ENV defaults to development above.
+  validatedConfig.ENABLE_SWAGGER = String(
+    swaggerEnabled({ ENABLE_SWAGGER: validatedConfig.ENABLE_SWAGGER, NODE_ENV: config.NODE_ENV as string | undefined }),
+  );
 
   return validatedConfig;
 }

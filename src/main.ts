@@ -5,7 +5,8 @@ import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { setupSwagger } from '@heyatom/nest-common';
+import { APP_VERSION } from './common/app-version';
 
 async function bootstrap() {
 
@@ -42,22 +43,16 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('')
-    .setDescription('Application API documentation')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-
-  if (!isProduction) {
-    const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('docs', app, document);
+  // Resolved once in config validation (swaggerEnabled): explicit ENABLE_SWAGGER, else dev/test only.
+  const swagger = config.get<string>('ENABLE_SWAGGER') === 'true';
+  if (swagger) {
+    setupSwagger(app, { title: 'Gatherly', version: APP_VERSION, configure: (b) => b.addBearerAuth() });
   }
 
   await app.listen(port);
   const pinoLogger = app.get(Logger);
   pinoLogger.log(`Application running on port ${port}`, 'Bootstrap');
-  if (!isProduction) {
+  if (swagger) {
     pinoLogger.log(`Swagger: http://localhost:${port}/docs`, 'Bootstrap');
   }
 }

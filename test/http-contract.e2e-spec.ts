@@ -3,7 +3,9 @@ import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import request = require('supertest');
 import { BastionJwksService } from '@heyatom/bastion-client/nest';
+import { createOpenApiDocument } from '@heyatom/nest-common';
 import { AppModule } from '@/modules/app/app.module';
+import { APP_VERSION } from '@/common/app-version';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -103,5 +105,13 @@ describe('HTTP contract (e2e)', () => {
   it('wraps 2xx bodies in { data }', async () => {
     const res = await request(app.getHttpServer()).get('/health/live').expect(200);
     expect(res.body).toEqual({ data: { status: 'ok' } });
+  });
+
+  it('builds the OpenAPI document with title, version and paginated list schemas', () => {
+    const doc = createOpenApiDocument(app, { title: 'Gatherly', version: APP_VERSION });
+
+    expect(doc.info).toMatchObject({ title: 'Gatherly', version: require('../package.json').version });
+    const list = doc.paths['/events'].get!.responses['200'] as any;
+    expect(list.content['application/json'].schema.properties.meta.$ref).toBe('#/components/schemas/PageMetaDto');
   });
 });
