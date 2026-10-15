@@ -5,7 +5,8 @@ import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { CLAIM_LEASE_MINUTES, QUEUE_BATCH_SIZE, WebhookService } from './webhook.service';
 import { WebhookEventType } from './dto/webhook-event.dto';
-import { signStandardWebhook, webhookAgent } from '@heyatom/nest-common/webhooks';
+import { AxiosError } from 'axios';
+import { signStandardWebhook, webhookAgent, WebhookUrlError } from '@heyatom/nest-common/webhooks';
 
 describe('WebhookService queue', () => {
   const prisma = {
@@ -162,6 +163,38 @@ describe('WebhookService queue', () => {
       });
     },
   );
+
+  it('marks FAILED without retry when the agent refuses the resolved address (DNS rebinding)', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
+    prisma.webhookDelivery.findMany.mockResolvedValue([row()]);
+    // What axios hands back when webhookAgent's lookup rejects: an AxiosError wrapping the guard error.
+    const blocked = new WebhookUrlError('current.example.test resolves to a non-public address');
+    const err = AxiosError.from(blocked, blocked.code);
+    expect(err.cause).toBe(blocked);
+    http.post.mockReturnValue(throwError(() => err));
+
+    await service.processQueue();
+
+    const { data } = prisma.webhookDelivery.update.mock.calls[0][0];
+    expect(data).toMatchObject({ attempts: 1, status: 'FAILED', lastError: 'Delivery failed' });
+    expect(data.nextRetryAt).toBeUndefined();
+  });
+
+  it('keeps a plain network error retryable', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
+    prisma.webhookDelivery.findMany.mockResolvedValue([row()]);
+    http.post.mockReturnValue(
+      throwError(() => AxiosError.from(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }), 'ECONNREFUSED')),
+    );
+
+    await service.processQueue();
+
+    expect(prisma.webhookDelivery.update.mock.calls[0][0].data).toMatchObject({
+      attempts: 1,
+      status: 'PENDING',
+      lastError: 'Delivery failed',
+    });
+  });
 
   it('marks FAILED at maxAttempts', async () => {
     prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);

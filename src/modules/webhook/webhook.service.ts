@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { HttpService } from '@nestjs/axios';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHmac, randomUUID } from 'crypto';
-import { checkWebhookUrl, signStandardWebhook, webhookAgent } from '@heyatom/nest-common/webhooks';
+import { checkWebhookUrl, signStandardWebhook, webhookAgent, WebhookUrlError } from '@heyatom/nest-common/webhooks';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatEventForWebhook, formatParticipantForWebhook } from './webhook.helper';
@@ -94,17 +94,9 @@ export class WebhookService {
       }
 
       // Re-checked at send time: URLs stored before validation existed. Hostnames are
-      // re-resolved by webhookAgent's lookup on every connect (DNS rebinding).
-      try {
-        checkWebhookUrl(url);
-      } catch {
-        // Terminal: retrying a blocked target is the scan itself.
-        await this.prisma.webhookDelivery.update({
-          where: { id: delivery.id },
-          data: { status: 'FAILED', attempts, lastError: 'Delivery failed' },
-        });
-        return;
-      }
+      // re-resolved by webhookAgent's lookup on every connect (DNS rebinding). Either
+      // refusal is terminal — see isBlockedTarget.
+      checkWebhookUrl(url);
       const body = JSON.stringify(delivery.payload);
       // Send time, not enqueue time: the body's `timestamp` is reused on every retry.
       const timestamp = Math.floor(Date.now() / 1000);
@@ -141,7 +133,8 @@ export class WebhookService {
       });
     } catch (error: any) {
       const backoffSeconds = Math.pow(2, attempts) * 30;
-      const failed = attempts >= delivery.maxAttempts;
+      // A blocked target is never retried: retrying it is the scan itself.
+      const failed = isBlockedTarget(error) || attempts >= delivery.maxAttempts;
 
       await this.prisma.webhookDelivery.update({
         where: { id: delivery.id },
@@ -238,4 +231,13 @@ export class WebhookService {
       }),
     });
   }
+}
+
+/**
+ * SSRF guard refusal, thrown directly (`checkWebhookUrl`) or from webhookAgent's socket
+ * `lookup`, where axios wraps it in an AxiosError carrying its `code` and `cause`.
+ * ponytail: inline until @heyatom/nest-common ships its own helper (> 0.1.1).
+ */
+function isBlockedTarget(err: any): boolean {
+  return err instanceof WebhookUrlError || err?.code === 'WEBHOOK_TARGET_BLOCKED' || err?.cause instanceof WebhookUrlError;
 }

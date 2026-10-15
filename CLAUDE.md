@@ -482,9 +482,11 @@ credentials in the URL. On save (`/admin/settings`, `/admin/clients`, both via
 unless **every** address is public (private/loopback/link-local/ULA/metadata/
 NAT64/`::/96`/`2001:db8::/32`, or no answer) → 400 with the package's
 `WebhookUrlError` message. At send time `checkWebhookUrl` re-checks the stored
-URL — a blocked one goes straight to `FAILED`, no retries — and the request
-goes through the package's `webhookAgent`, whose DNS lookup refuses private
-addresses (DNS rebinding). No redirects, 64KB response cap, 10s total
+URL and the request goes through the package's `webhookAgent`, whose DNS
+lookup refuses private addresses (DNS rebinding). Either refusal is terminal:
+straight to `FAILED`, no retries (`isBlockedTarget()` in `webhook.service.ts`
+also matches the agent's refusal wrapped by axios: `code`
+`WEBHOOK_TARGET_BLOCKED`, `cause` `WebhookUrlError`). No redirects, 64KB response cap, 10s total
 deadline. `lastError` is `HTTP <status>` or `Delivery failed` — never the raw
 socket error. Signing is the package's `signStandardWebhook` (byte-identical
 to the old local HMAC).
