@@ -9,8 +9,7 @@ import {EventModule} from "@/modules/events/event.module";
 import {CategoryModule} from "@/modules/categories/category.module";
 import {TagModule} from "@/modules/tags/tag.module";
 import { HealthModule } from '@/modules/health/health.module';
-import { MetricsModule } from '@/modules/metrics/metrics.module';
-import { MetricsMiddleware } from '@/modules/metrics/metrics.middleware';
+import { MetricsModule } from '@heyatom/nest-common/metrics';
 
 import { BastionJwtGuard } from '@/modules/bastion/guards/bastion-jwt.guard';
 import { BastionModule } from '@heyatom/bastion-client/nest';
@@ -80,7 +79,15 @@ import { APP_GUARD } from '@nestjs/core';
             }),
         }),
         HealthModule,
-        MetricsModule,
+        // Own server on METRICS_PORT; applies MetricsMiddleware to every route itself
+        // (a middleware, not an interceptor, so guard 401s and throttler 429s are counted).
+        MetricsModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                app: 'gatherly',
+                port: config.getOrThrow<number>('METRICS_PORT'),
+            }),
+        }),
         ClientModule,
         EventModule,
         CategoryModule,
@@ -95,9 +102,7 @@ import { APP_GUARD } from '@nestjs/core';
 
 export class AppModule implements NestModule {
     configure(consumer: MiddlewareConsumer): void {
-        // MetricsMiddleware is a middleware and not an APP_INTERCEPTOR on purpose:
-        // interceptors run after the guards, so 401s and 429s would never be counted.
-        consumer.apply(RequestIdMiddleware, MetricsMiddleware).forRoutes('*');
+        consumer.apply(RequestIdMiddleware).forRoutes('*');
     }
 }
 

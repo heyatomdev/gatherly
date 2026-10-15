@@ -1,46 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Registry, Histogram, Gauge, collectDefaultMetrics } from '@prometheus-io/client';
+import { Gauge } from '@prometheus-io/client';
+import { MetricsService } from '@heyatom/nest-common/metrics';
 import { WebhookDeliveryStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * Prometheus metrics for gatherly. Uses its own `Registry` rather than the
- * @prometheus-io/client global one, so a `MetricsService` created per test (or per
- * NestJS TestingModule) never collides with metrics registered by another
- * test in the same process.
+ * Gatherly's domain gauges, registered on the shared `MetricsService` registry
+ * from `@heyatom/nest-common/metrics` (which owns the registry, the default
+ * `app` label, `http_request_duration_seconds` and the `/metrics` server).
  *
- * The webhook gauges are computed lazily via a `collect()` callback — the
- * client only invokes it on scrape, so an idle process never runs these
- * queries. A failed query logs a warning and leaves the gauge at its last
- * value instead of failing the whole scrape.
+ * Computed lazily via `collect()` — the client only invokes it on scrape, so
+ * an idle process never runs these queries. A failed query logs a warning and
+ * leaves the gauge at its last value instead of failing the whole scrape.
  */
 @Injectable()
-export class MetricsService {
-  private readonly logger = new Logger(MetricsService.name);
-  readonly registry = new Registry();
-  readonly httpRequestDuration: Histogram<'method' | 'route' | 'status'>;
+export class WebhookMetrics {
+  private readonly logger = new Logger(WebhookMetrics.name);
 
-  constructor(private readonly prisma: PrismaService) {
-    this.registry.setDefaultLabels({ app: 'gatherly' });
-    collectDefaultMetrics({ register: this.registry });
-
-    this.httpRequestDuration = new Histogram({
-      name: 'http_request_duration_seconds',
-      help: 'HTTP request duration in seconds',
-      labelNames: ['method', 'route', 'status'],
-      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
-      registers: [this.registry],
-    });
-
-    this.registerWebhookGauges();
-  }
-
-  private registerWebhookGauges(): void {
+  constructor(
+    metrics: MetricsService,
+    private readonly prisma: PrismaService,
+  ) {
     const deliveries = new Gauge({
       name: 'gatherly_webhook_deliveries',
       help: 'Webhook deliveries by status',
       labelNames: ['status'],
-      registers: [this.registry],
+      registers: [metrics.registry],
       collect: async () => {
         try {
           const counts = await this.prisma.webhookDelivery.groupBy({
@@ -66,7 +51,7 @@ export class MetricsService {
     const overdue = new Gauge({
       name: 'gatherly_webhook_deliveries_overdue',
       help: 'PENDING webhook deliveries past their nextRetryAt — the queue job runs every minute, so a value that stays non-zero means it is stuck',
-      registers: [this.registry],
+      registers: [metrics.registry],
       collect: async () => {
         try {
           overdue.set(

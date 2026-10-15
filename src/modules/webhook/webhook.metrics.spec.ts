@@ -1,9 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { WebhookDeliveryStatus } from '@prisma/client';
-import { MetricsService } from './metrics.service';
+import { MetricsService } from '@heyatom/nest-common/metrics';
 import { PrismaService } from '../prisma/prisma.service';
+import { WebhookMetrics } from './webhook.metrics';
 
-describe('MetricsService', () => {
+describe('WebhookMetrics', () => {
   let service: MetricsService;
   const mockPrisma = {
     webhookDelivery: { groupBy: jest.fn(), count: jest.fn() },
@@ -29,7 +30,8 @@ describe('MetricsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new MetricsService(mockPrisma as unknown as PrismaService);
+    service = new MetricsService({ app: 'gatherly' });
+    new WebhookMetrics(service, mockPrisma as unknown as PrismaService);
   });
 
   it('gatherly_webhook_deliveries always emits every enum value, 0 when absent', async () => {
