@@ -15,7 +15,6 @@ import { APP_VERSION } from './common/app-version';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
-    rawBody: true,
   });
   app.useLogger(app.get(Logger));
 

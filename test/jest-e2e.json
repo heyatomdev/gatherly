@@ -1,14 +1,26 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": "../",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
-  "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
+  "setupFiles": [
+    "<rootDir>/test/setup-e2e.ts"
+  ],
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "moduleNameMapper": {
     "^@/(.*)$": "<rootDir>/src/$1"
   },
-  "transformIgnorePatterns": ["/node_modules/(?!uuid)/"]
+  "transformIgnorePatterns": [
+    "/node_modules/(?!uuid)/"
+  ],
+  "testPathIgnorePatterns": [
+    "/node_modules/",
+    "/.claude/"
+  ]
 }

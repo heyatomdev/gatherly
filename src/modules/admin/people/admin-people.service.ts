@@ -35,8 +35,8 @@ export class AdminPeopleService {
   async listPeople(clientId: string, query: PeopleQueryDto) {
     const { search, segment, minEvents = 1, limit } = query;
     const offset = query.skip;
-    const vipThreshold = this.config.get<number>('VIP_THRESHOLD') ?? 5;
-    const atRiskDays = this.config.get<number>('AT_RISK_DAYS') ?? 120;
+    const vipThreshold = this.config.getOrThrow<number>('VIP_THRESHOLD');
+    const atRiskDays = this.config.getOrThrow<number>('AT_RISK_DAYS');
 
     const searchFilter = search
       ? Prisma.sql`AND (agg.display_name ILIKE ${`%${search}%`} OR agg.email ILIKE ${`%${search}%`})`
@@ -142,8 +142,8 @@ export class AdminPeopleService {
 
   async getPersonProfile(clientId: string, key: string) {
     const predicate = this.buildKeyPredicate(key);
-    const vipThreshold = this.config.get<number>('VIP_THRESHOLD') ?? 5;
-    const atRiskDays = this.config.get<number>('AT_RISK_DAYS') ?? 120;
+    const vipThreshold = this.config.getOrThrow<number>('VIP_THRESHOLD');
+    const atRiskDays = this.config.getOrThrow<number>('AT_RISK_DAYS');
 
     const [summaryRows, historyRows, topCategories, topTags] =
       await Promise.all([

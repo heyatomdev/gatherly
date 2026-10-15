@@ -8,7 +8,11 @@ describe('AdminPeopleService.listPeople pagination', () => {
   const prisma = { $queryRaw: jest.fn() };
   const service = new AdminPeopleService(
     prisma as unknown as PrismaService,
-    { get: () => undefined } as unknown as ConfigService,
+    // The validated config always carries these (defaults in config.validation.ts).
+    {
+      getOrThrow: (key: string) =>
+        ({ VIP_THRESHOLD: 5, AT_RISK_DAYS: 120 })[key],
+    } as unknown as ConfigService,
   );
 
   it('pages the raw query with LIMIT/OFFSET from PageParams and builds meta with paginate()', async () => {

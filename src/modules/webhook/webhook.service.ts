@@ -178,7 +178,8 @@ export class WebhookService {
       );
       if (failed) {
         this.logger.error(
-          `Webhook permanently failed after ${attempts} attempts: ${url ?? delivery.webhookUrl}`,
+          // Host only: a tenant can put a token in the query string.
+          `Webhook ${delivery.id} permanently failed after ${attempts} attempts: ${webhookHost(url ?? delivery.webhookUrl)}`,
         );
       }
     }
@@ -271,5 +272,13 @@ export class WebhookService {
         };
       }),
     });
+  }
+}
+
+function webhookHost(url: string | null | undefined): string {
+  try {
+    return url ? new URL(url).host : 'no URL';
+  } catch {
+    return 'invalid URL';
   }
 }
