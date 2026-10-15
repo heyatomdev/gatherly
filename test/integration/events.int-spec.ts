@@ -125,7 +125,7 @@ describe('Events against a real DB (integration)', () => {
       const { client, auth } = await createTenant(prisma);
 
       await http().post('/events').set(auth).send({ ...body, status: 'PUBLISHED' }).expect(400);
-      const { body: created } = await http().post('/events').set(auth).send(body).expect(201);
+      const { data: created } = (await http().post('/events').set(auth).send(body).expect(201)).body;
 
       expect(created.status).toBe('DRAFT');
       expect(await prisma.event.count({ where: { clientId: client.id } })).toBe(1);
@@ -148,8 +148,8 @@ describe('Events against a real DB (integration)', () => {
       const event = await createEvent(prisma, client.id, { maxParticipants: 1 });
       const base = `/events/${event.id}/participants`;
 
-      const seated = (await http().post(base).set(auth).send({ userName: 'seated' }).expect(201)).body;
-      const waiting = (await http().post(base).set(auth).send({ userName: 'waiting' }).expect(201)).body;
+      const seated = (await http().post(base).set(auth).send({ userName: 'seated' }).expect(201)).body.data;
+      const waiting = (await http().post(base).set(auth).send({ userName: 'waiting' }).expect(201)).body.data;
       expect(seated.status).toBe('REGISTERED');
       const seatedId = seated.id;
       const waitingId = waiting.id;
@@ -165,7 +165,8 @@ describe('Events against a real DB (integration)', () => {
         .patch(`${base}/${waitingId}/status`)
         .set(auth)
         .send({ status: 'ATTENDED' })
-        .expect(409);
+        .expect(409)
+        .expect(({ body }) => expect(body.code).toBe('EVENT_FULL'));
       await http().post(base).set(auth).send({ userName: 'late' }).expect(201);
       expect(await activeCount(event.id)).toBe(1);
 
