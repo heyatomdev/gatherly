@@ -21,7 +21,7 @@
     "^@/(.*)$": "<rootDir>/src/$1"
   },
   "transformIgnorePatterns": [
-    "/node_modules/(?!(\\.pnpm/[^/]+/node_modules/)?(uuid|jose)/)"
+    "/node_modules/(?!(\\.pnpm/[^/]+/node_modules/)?(uuid)/)"
   ],
   "testPathIgnorePatterns": [
     "/node_modules/",

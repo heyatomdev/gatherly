@@ -17,11 +17,11 @@ importers:
   .:
     dependencies:
       '@heyatom/bastion-client':
-        specifier: ^0.7.0
-        version: 0.7.0(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(jose@6.2.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+        specifier: ^0.8.0
+        version: 0.8.0(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@heyatom/nest-common':
-        specifier: ^0.2.0
-        version: 0.2.0(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(@nestjs/platform-express@11.1.26)(@nestjs/swagger@11.4.4(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prometheus-io/client@0.16.1)(class-transformer@0.5.1)(class-validator@0.15.1)(helmet@8.2.0)(nestjs-pino@4.6.1(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+        specifier: ^0.3.0
+        version: 0.3.0(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(@nestjs/platform-express@11.1.26)(@nestjs/swagger@11.4.4(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prometheus-io/client@0.16.1)(class-transformer@0.5.1)(class-validator@0.15.1)(helmet@8.2.0)(nestjs-pino@4.6.1(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/axios':
         specifier: ^4.0.1
         version: 4.0.1(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.20.0)(rxjs@7.8.2)
@@ -76,9 +76,6 @@ importers:
       helmet:
         specifier: ^8.2.0
         version: 8.2.0
-      jose:
-        specifier: ^6.2.3
-        version: 6.2.3
       luxon:
         specifier: ^3.7.2
         version: 3.7.2
@@ -458,13 +455,12 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
-  '@heyatom/bastion-client@0.7.0':
-    resolution: {integrity: sha512-o8D1RY6zjXs0HpOit4qU3aptx4EYNyphd/XCJO/2mO37agkn8dxBgNmQZpDO7DKRXAd/3V+bvxBykieLkPbMEw==}
+  '@heyatom/bastion-client@0.8.0':
+    resolution: {integrity: sha512-TXTG0NJd+T54353H4ycI38ucITdwvKPqLMDp8Sw6czODVAngbdoaaRHvTfD8jqCLewjAl0tw/E3PhWt5iAZDKw==}
     engines: {node: '>=20.19'}
     peerDependencies:
       '@nestjs/common': ^11.0.0
       '@nestjs/core': ^11.0.0
-      jose: ^6.0.0
       reflect-metadata: ^0.2.0
       rxjs: ^7.0.0
     peerDependenciesMeta:
@@ -477,8 +473,8 @@ packages:
       rxjs:
         optional: true
 
-  '@heyatom/nest-common@0.2.0':
-    resolution: {integrity: sha512-t7leX2mXTByt1Pgxrw4Hj3qg+K+vmaAuwgZ77LQnpel24tK4TuRGE5+3hdMC08l7h1yZhd11wDy8/R2Iwg94ow==}
+  '@heyatom/nest-common@0.3.0':
+    resolution: {integrity: sha512-lw8dmbiw02ObKDOzoRK/NT0xQ6+Yw7f91heBvw+QuhoM+fjy0RMZaZSMuCi8z+bLMaRhlpiyUj8aOMBIvSQnSQ==}
     engines: {node: '>=20.19'}
     peerDependencies:
       '@nestjs/common': ^11.0.0
@@ -2917,9 +2913,6 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  jose@6.2.3:
-    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
-
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -4567,16 +4560,14 @@ snapshots:
       protobufjs: 7.6.6
       yargs: 17.7.3
 
-  '@heyatom/bastion-client@0.7.0(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(jose@6.2.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)':
-    dependencies:
-      jose: 6.2.3
+  '@heyatom/bastion-client@0.8.0(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(reflect-metadata@0.2.2)(rxjs@7.8.2)':
     optionalDependencies:
       '@nestjs/common': 11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.1.26(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.26)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       reflect-metadata: 0.2.2
       rxjs: 7.8.2
 
-  '@heyatom/nest-common@0.2.0(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(@nestjs/platform-express@11.1.26)(@nestjs/swagger@11.4.4(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prometheus-io/client@0.16.1)(class-transformer@0.5.1)(class-validator@0.15.1)(helmet@8.2.0)(nestjs-pino@4.6.1(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)':
+  '@heyatom/nest-common@0.3.0(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(@nestjs/platform-express@11.1.26)(@nestjs/swagger@11.4.4(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.26)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prometheus-io/client@0.16.1)(class-transformer@0.5.1)(class-validator@0.15.1)(helmet@8.2.0)(nestjs-pino@4.6.1(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)':
     dependencies:
       '@nestjs/common': 11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.1.26(@nestjs/common@11.1.26(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.26)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -7404,8 +7395,6 @@ snapshots:
       - ts-node
 
   jiti@2.7.0: {}
-
-  jose@6.2.3: {}
 
   joycon@3.1.1: {}
 

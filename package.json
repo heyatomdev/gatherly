@@ -22,8 +22,8 @@
     "preinstall": "npx only-allow pnpm"
   },
   "dependencies": {
-    "@heyatom/bastion-client": "^0.7.0",
-    "@heyatom/nest-common": "^0.2.0",
+    "@heyatom/bastion-client": "^0.8.0",
+    "@heyatom/nest-common": "^0.3.0",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.1.26",
     "@nestjs/config": "^4.0.4",
@@ -42,7 +42,6 @@
     "dotenv": "^17.4.2",
     "express": "^4.22.2",
     "helmet": "^8.2.0",
-    "jose": "^6.2.3",
     "luxon": "^3.7.2",
     "nestjs-pino": "^4.6.1",
     "pino": "^10.3.1",
