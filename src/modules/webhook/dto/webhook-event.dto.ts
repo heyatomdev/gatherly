@@ -59,7 +59,8 @@ export interface ParticipantWebhookPayload extends WebhookPayload {
     externalId?: string;
     externalSource?: string;
     status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
-    previousStatus?: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
+    previousStatus?:
+      'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
     role: 'ATTENDEE' | 'SPEAKER' | 'ORGANIZER' | 'HOST';
     checkedIn: boolean;
     checkedInAt?: Date;

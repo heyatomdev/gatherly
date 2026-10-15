@@ -45,7 +45,10 @@ export class AdminAnalyticsController {
   @Get('stats/breakdown')
   @ApiQuery({ name: 'by', enum: BreakdownBy, required: false })
   breakdown(@Request() req, @Query() query: BreakdownQueryDto) {
-    return this.analytics.breakdown(req.adminClient.id, query.by ?? BreakdownBy.STATUS);
+    return this.analytics.breakdown(
+      req.adminClient.id,
+      query.by ?? BreakdownBy.STATUS,
+    );
   }
 
   @Get('analytics/retention')

@@ -9,14 +9,16 @@ import { AppModule } from '@/modules/app/app.module';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 import { loggerConfig } from '@/configs/logger.config';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 /** Boots the real AppModule: request-id/access-log and metrics server wiring. */
 describe('Observability (e2e)', () => {
   let app: INestApplication;
   let metricsUrl: string;
   const logLines: Array<Record<string, any>> = [];
-  const accessLogs = () => logLines.filter((l) => l.msg === 'request completed');
+  const accessLogs = () =>
+    logLines.filter((l) => l.msg === 'request completed');
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
@@ -29,7 +31,9 @@ describe('Observability (e2e)', () => {
         factory: (config: ConfigService) => {
           const params = loggerConfig(config);
           const { transport, ...opts } = params.pinoHttp;
-          const stream = { write: (line: string) => void logLines.push(JSON.parse(line)) };
+          const stream = {
+            write: (line: string) => void logLines.push(JSON.parse(line)),
+          };
           return { ...params, pinoHttp: [opts, stream] };
         },
       })
@@ -40,7 +44,9 @@ describe('Observability (e2e)', () => {
 
     // groupBy's generic signature is too deep for jest.spyOn's types.
     const deliveries = module.get(PrismaService).webhookDelivery as any;
-    jest.spyOn(deliveries, 'groupBy').mockResolvedValue([{ status: 'PENDING', _count: 2 }]);
+    jest
+      .spyOn(deliveries, 'groupBy')
+      .mockResolvedValue([{ status: 'PENDING', _count: 2 }]);
     jest.spyOn(deliveries, 'count').mockResolvedValue(1);
     metricsUrl = `http://127.0.0.1:${module.get(MetricsServer).port}/metrics`;
   });
@@ -51,8 +57,11 @@ describe('Observability (e2e)', () => {
     logLines.length = 0;
   });
 
-  it('answers with a server-generated X-Request-Id, never the caller\'s', async () => {
-    const res = await request(app.getHttpServer()).get('/nope').set('X-Request-Id', '<script>').expect(404);
+  it("answers with a server-generated X-Request-Id, never the caller's", async () => {
+    const res = await request(app.getHttpServer())
+      .get('/nope')
+      .set('X-Request-Id', '<script>')
+      .expect(404);
 
     expect(res.headers['x-request-id']).toMatch(UUID);
     const [line] = accessLogs();
@@ -63,10 +72,16 @@ describe('Observability (e2e)', () => {
   });
 
   it('logs a well-formed caller id only as clientRequestId', async () => {
-    const res = await request(app.getHttpServer()).get('/nope').set('X-Request-Id', 'caller-abc.1').expect(404);
+    const res = await request(app.getHttpServer())
+      .get('/nope')
+      .set('X-Request-Id', 'caller-abc.1')
+      .expect(404);
 
     expect(res.headers['x-request-id']).toMatch(UUID);
-    expect(accessLogs()[0]).toMatchObject({ service: 'gatherly', clientRequestId: 'caller-abc.1' });
+    expect(accessLogs()[0]).toMatchObject({
+      service: 'gatherly',
+      clientRequestId: 'caller-abc.1',
+    });
   });
 
   it('does not log /health/live or /health/ready', async () => {
@@ -104,9 +119,15 @@ describe('Observability (e2e)', () => {
       /http_request_duration_seconds_count\{app="gatherly",method="GET",route="unmatched",status="404"\} \d+/,
     );
     expect(body).not.toContain('route="/health');
-    expect(body).toMatch(/gatherly_webhook_deliveries\{status="PENDING",app="gatherly"\} 2/);
-    expect(body).toMatch(/gatherly_webhook_deliveries\{status="FAILED",app="gatherly"\} 0/);
-    expect(body).toMatch(/gatherly_webhook_deliveries_overdue\{app="gatherly"\} 1/);
+    expect(body).toMatch(
+      /gatherly_webhook_deliveries\{status="PENDING",app="gatherly"\} 2/,
+    );
+    expect(body).toMatch(
+      /gatherly_webhook_deliveries\{status="FAILED",app="gatherly"\} 0/,
+    );
+    expect(body).toMatch(
+      /gatherly_webhook_deliveries_overdue\{app="gatherly"\} 1/,
+    );
   });
 
   it('serves nothing on the API port', async () => {

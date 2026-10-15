@@ -11,7 +11,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { CategoryService } from './category.service';
-import { CreateCategoryDto, UpdateCategoryDto, CategoryResponseDto } from './dto/category.dto';
+import {
+  CreateCategoryDto,
+  UpdateCategoryDto,
+  CategoryResponseDto,
+} from './dto/category.dto';
 import { ApiTags } from '@nestjs/swagger';
 
 @ApiTags('categories')
@@ -25,7 +29,10 @@ export class CategoryController {
     @Request() req,
     @Body() createCategoryDto: CreateCategoryDto,
   ): Promise<CategoryResponseDto> {
-    return this.categoryService.createCategory(req.client.id, createCategoryDto);
+    return this.categoryService.createCategory(
+      req.client.id,
+      createCategoryDto,
+    );
   }
 
   @Get()
@@ -47,7 +54,11 @@ export class CategoryController {
     @Param('categoryId') categoryId: string,
     @Body() updateCategoryDto: UpdateCategoryDto,
   ): Promise<CategoryResponseDto> {
-    return this.categoryService.updateCategory(categoryId, req.client.id, updateCategoryDto);
+    return this.categoryService.updateCategory(
+      categoryId,
+      req.client.id,
+      updateCategoryDto,
+    );
   }
 
   @Delete(':categoryId')
@@ -59,4 +70,3 @@ export class CategoryController {
     return this.categoryService.deleteCategory(categoryId, req.client.id);
   }
 }
-

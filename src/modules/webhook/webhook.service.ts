@@ -1,11 +1,24 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHmac, randomUUID } from 'crypto';
-import { checkWebhookUrl, isWebhookTargetBlocked, signStandardWebhook, webhookAgent } from '@heyatom/nest-common/webhooks';
+import {
+  checkWebhookUrl,
+  isWebhookTargetBlocked,
+  signStandardWebhook,
+  webhookAgent,
+} from '@heyatom/nest-common/webhooks';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { formatEventForWebhook, formatParticipantForWebhook } from './webhook.helper';
+import {
+  formatEventForWebhook,
+  formatParticipantForWebhook,
+} from './webhook.helper';
 import { WebhookEventType } from './dto/webhook-event.dto';
 
 /** Rows claimed per queue tick — see `claimDue`. */
@@ -110,9 +123,17 @@ export class WebhookService {
       if (client?.webhookSecret) {
         Object.assign(
           headers,
-          signStandardWebhook({ id: delivery.id, timestamp, body, secrets: [client.webhookSecret] }),
+          signStandardWebhook({
+            id: delivery.id,
+            timestamp,
+            body,
+            secrets: [client.webhookSecret],
+          }),
         );
-        headers['X-Webhook-Signature'] = this.signPayload(client.webhookSecret, body);
+        headers['X-Webhook-Signature'] = this.signPayload(
+          client.webhookSecret,
+          body,
+        );
       }
 
       await firstValueFrom(
@@ -134,20 +155,27 @@ export class WebhookService {
     } catch (error: any) {
       const backoffSeconds = Math.pow(2, attempts) * 30;
       // A blocked target is never retried: retrying it is the scan itself.
-      const failed = isWebhookTargetBlocked(error) || attempts >= delivery.maxAttempts;
+      const failed =
+        isWebhookTargetBlocked(error) || attempts >= delivery.maxAttempts;
 
       await this.prisma.webhookDelivery.update({
         where: { id: delivery.id },
         data: {
           attempts,
           status: failed ? 'FAILED' : 'PENDING',
-          nextRetryAt: failed ? undefined : new Date(Date.now() + backoffSeconds * 1000),
+          nextRetryAt: failed
+            ? undefined
+            : new Date(Date.now() + backoffSeconds * 1000),
           // Generic on purpose: raw socket errors (ECONNREFUSED vs timeout…) are a port-scan oracle.
-          lastError: error?.response?.status ? `HTTP ${error.response.status}` : 'Delivery failed',
+          lastError: error?.response?.status
+            ? `HTTP ${error.response.status}`
+            : 'Delivery failed',
         },
       });
 
-      this.logger.debug(`Webhook delivery ${delivery.id} failed: ${error?.message}`);
+      this.logger.debug(
+        `Webhook delivery ${delivery.id} failed: ${error?.message}`,
+      );
       if (failed) {
         this.logger.error(
           `Webhook permanently failed after ${attempts} attempts: ${url ?? delivery.webhookUrl}`,
@@ -191,7 +219,12 @@ export class WebhookService {
     }
     await this.prisma.webhookDelivery.update({
       where: { id: deliveryId },
-      data: { status: 'PENDING', attempts: 0, nextRetryAt: new Date(), lastError: null },
+      data: {
+        status: 'PENDING',
+        attempts: 0,
+        nextRetryAt: new Date(),
+        lastError: null,
+      },
     });
   }
 
@@ -215,7 +248,9 @@ export class WebhookService {
     });
     if (!client?.webhookUrl) return;
 
-    const format = type.startsWith('event.') ? formatEventForWebhook : formatParticipantForWebhook;
+    const format = type.startsWith('event.')
+      ? formatEventForWebhook
+      : formatParticipantForWebhook;
     const timestamp = new Date().toISOString();
     await this.prisma.webhookDelivery.createMany({
       data: list.map((item) => {
@@ -226,7 +261,13 @@ export class WebhookService {
           clientId,
           webhookUrl: client.webhookUrl!,
           eventType: type,
-          payload: { id, event: type, timestamp, clientId, data: { ...format(item), ...extra } },
+          payload: {
+            id,
+            event: type,
+            timestamp,
+            clientId,
+            data: { ...format(item), ...extra },
+          },
         };
       }),
     });

@@ -1,7 +1,11 @@
 import { Event, Participant } from '@prisma/client';
 
 type EventWithRelations = Event & {
-  translations?: { locale: string; title: string; description?: string | null }[];
+  translations?: {
+    locale: string;
+    title: string;
+    description?: string | null;
+  }[];
   category?: { translations?: { locale: string; name: string }[] } | null;
   tags?: { tag: { slug: string } }[];
 };
@@ -13,10 +17,16 @@ function pickTranslation<T extends { locale: string }>(
   return items?.find((t) => t.locale === locale) ?? items?.[0];
 }
 
-export function formatEventForWebhook(event: EventWithRelations, locale?: string): any {
+export function formatEventForWebhook(
+  event: EventWithRelations,
+  locale?: string,
+): any {
   const l = locale ?? event.defaultLocale;
   const translation = pickTranslation(event.translations, l);
-  const categoryName = pickTranslation(event.category?.translations ?? [], l)?.name;
+  const categoryName = pickTranslation(
+    event.category?.translations ?? [],
+    l,
+  )?.name;
 
   return {
     id: event.id,

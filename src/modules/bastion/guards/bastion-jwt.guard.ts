@@ -1,4 +1,9 @@
-import { ExecutionContext, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import {
   BASTION_OPTIONS,
@@ -42,8 +47,11 @@ export class BastionJwtGuard extends ServiceClientJwtGuard {
     if (!req.user) return true; // @Public() — the package guard stepped aside
 
     const payload = req.user as ServiceClientJwtPayload;
-    const client = await this.prisma.client.findUnique({ where: { tenantId: payload.tenantId } });
-    if (!client || !client.isActive) throw new UnauthorizedException('Client non autorizzato');
+    const client = await this.prisma.client.findUnique({
+      where: { tenantId: payload.tenantId },
+    });
+    if (!client || !client.isActive)
+      throw new UnauthorizedException('Client non autorizzato');
     req.client = client;
     return true;
   }

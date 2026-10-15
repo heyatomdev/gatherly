@@ -1,5 +1,14 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsIn, IsInt, IsNumber, Min, IsOptional, IsString, validateSync } from 'class-validator';
+import {
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNumber,
+  Min,
+  IsOptional,
+  IsString,
+  validateSync,
+} from 'class-validator';
 import { swaggerEnabled } from '@heyatom/nest-common';
 
 enum LogLevel {
@@ -126,14 +135,20 @@ export function validate(config: Record<string, unknown>) {
 
   if (errors.length > 0) {
     const messages = errors
-      .map((e) => `${e.property}: ${Object.values(e.constraints ?? {}).join(', ')}`)
+      .map(
+        (e) =>
+          `${e.property}: ${Object.values(e.constraints ?? {}).join(', ')}`,
+      )
       .join('; ');
     throw new Error(`Config validation failed — ${messages}`);
   }
 
   // From the raw env, not the class default: NODE_ENV defaults to development above.
   validatedConfig.ENABLE_SWAGGER = String(
-    swaggerEnabled({ ENABLE_SWAGGER: validatedConfig.ENABLE_SWAGGER, NODE_ENV: config.NODE_ENV as string | undefined }),
+    swaggerEnabled({
+      ENABLE_SWAGGER: validatedConfig.ENABLE_SWAGGER,
+      NODE_ENV: config.NODE_ENV as string | undefined,
+    }),
   );
 
   return validatedConfig;

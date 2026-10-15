@@ -1,6 +1,10 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { lastValueFrom, of, throwError } from 'rxjs';
-import { IdempotencyInterceptor, STALE_CLAIM_MS, hashRequestBody } from './idempotency.interceptor';
+import {
+  IdempotencyInterceptor,
+  STALE_CLAIM_MS,
+  hashRequestBody,
+} from './idempotency.interceptor';
 
 const prisma = {
   idempotencyKey: {
@@ -25,7 +29,9 @@ function ctx(key: any, body: unknown = BODY) {
   const res = { statusCode: 201, status: jest.fn() };
   return {
     res,
-    context: { switchToHttp: () => ({ getRequest: () => req, getResponse: () => res }) } as any,
+    context: {
+      switchToHttp: () => ({ getRequest: () => req, getResponse: () => res }),
+    } as any,
   };
 }
 
@@ -55,7 +61,9 @@ describe('IdempotencyInterceptor', () => {
     const handler = { handle: jest.fn(() => of({ id: 'p1' })) };
     const { context } = ctx('k1');
 
-    await expect(lastValueFrom(interceptor.intercept(context, handler))).resolves.toEqual({ id: 'p1' });
+    await expect(
+      lastValueFrom(interceptor.intercept(context, handler)),
+    ).resolves.toEqual({ id: 'p1' });
 
     expect(prisma.idempotencyKey.create.mock.calls[0][0].data).toMatchObject({
       key: 'k1',
@@ -82,10 +90,12 @@ describe('IdempotencyInterceptor', () => {
     prisma.idempotencyKey.findUnique.mockResolvedValue(existing());
     const handler = { handle: jest.fn() };
 
-    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).rejects.toThrow(
-      ConflictException,
-    );
-    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).rejects.toMatchObject({
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('k1').context, handler)),
+    ).rejects.toThrow(ConflictException);
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('k1').context, handler)),
+    ).rejects.toMatchObject({
       response: { code: 'IDEMPOTENCY_IN_PROGRESS' },
     });
     expect(handler.handle).not.toHaveBeenCalled();
@@ -94,11 +104,15 @@ describe('IdempotencyInterceptor', () => {
 
   it('replays a completed response', async () => {
     prisma.idempotencyKey.create.mockRejectedValue(p2002);
-    prisma.idempotencyKey.findUnique.mockResolvedValue(existing({ statusCode: 201, responseBody: { id: 'p1' } }));
+    prisma.idempotencyKey.findUnique.mockResolvedValue(
+      existing({ statusCode: 201, responseBody: { id: 'p1' } }),
+    );
     const handler = { handle: jest.fn() };
     const { context, res } = ctx('k1');
 
-    await expect(lastValueFrom(interceptor.intercept(context, handler))).resolves.toEqual({ id: 'p1' });
+    await expect(
+      lastValueFrom(interceptor.intercept(context, handler)),
+    ).resolves.toEqual({ id: 'p1' });
     expect(res.status).toHaveBeenCalledWith(201);
     expect(handler.handle).not.toHaveBeenCalled();
   });
@@ -106,40 +120,68 @@ describe('IdempotencyInterceptor', () => {
   it('replays legacy rows that have no stored hash', async () => {
     prisma.idempotencyKey.create.mockRejectedValue(p2002);
     prisma.idempotencyKey.findUnique.mockResolvedValue(
-      existing({ statusCode: 201, responseBody: { id: 'p1' }, requestHash: null }),
+      existing({
+        statusCode: 201,
+        responseBody: { id: 'p1' },
+        requestHash: null,
+      }),
     );
 
     await expect(
-      lastValueFrom(interceptor.intercept(ctx('k1', { other: true }).context, { handle: jest.fn() })),
+      lastValueFrom(
+        interceptor.intercept(ctx('k1', { other: true }).context, {
+          handle: jest.fn(),
+        }),
+      ),
     ).resolves.toEqual({ id: 'p1' });
   });
 
   it('returns 422 when the key is reused with a different body', async () => {
     prisma.idempotencyKey.create.mockRejectedValue(p2002);
-    prisma.idempotencyKey.findUnique.mockResolvedValue(existing({ statusCode: 201, responseBody: { id: 'p1' } }));
+    prisma.idempotencyKey.findUnique.mockResolvedValue(
+      existing({ statusCode: 201, responseBody: { id: 'p1' } }),
+    );
     const handler = { handle: jest.fn() };
 
     await expect(
-      lastValueFrom(interceptor.intercept(ctx('k1', { userName: 'Luigi' }).context, handler)),
-    ).rejects.toMatchObject({ status: 422, response: { code: 'IDEMPOTENCY_KEY_REUSED' } });
+      lastValueFrom(
+        interceptor.intercept(
+          ctx('k1', { userName: 'Luigi' }).context,
+          handler,
+        ),
+      ),
+    ).rejects.toMatchObject({
+      status: 422,
+      response: { code: 'IDEMPOTENCY_KEY_REUSED' },
+    });
     expect(handler.handle).not.toHaveBeenCalled();
   });
 
   it('takes over an abandoned IN_PROGRESS claim and runs the handler', async () => {
-    const stale = existing({ createdAt: new Date(Date.now() - STALE_CLAIM_MS - 1000) });
+    const stale = existing({
+      createdAt: new Date(Date.now() - STALE_CLAIM_MS - 1000),
+    });
     prisma.idempotencyKey.create.mockRejectedValue(p2002);
     prisma.idempotencyKey.findUnique.mockResolvedValue(stale);
     prisma.idempotencyKey.updateMany.mockResolvedValue({ count: 1 });
     const handler = { handle: jest.fn(() => of({ id: 'p1' })) };
 
-    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).resolves.toEqual({ id: 'p1' });
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('k1').context, handler)),
+    ).resolves.toEqual({ id: 'p1' });
 
     // Compare-and-set on the exact row read, so only one concurrent retry wins.
     const { where, data } = prisma.idempotencyKey.updateMany.mock.calls[0][0];
-    expect(where).toEqual({ id: 'row1', statusCode: 0, createdAt: stale.createdAt });
+    expect(where).toEqual({
+      id: 'row1',
+      statusCode: 0,
+      createdAt: stale.createdAt,
+    });
     expect(data.createdAt.getTime()).toBeGreaterThan(stale.createdAt.getTime());
     expect(handler.handle).toHaveBeenCalledTimes(1);
-    expect(prisma.idempotencyKey.update.mock.calls[0][0].data.statusCode).toBe(201);
+    expect(prisma.idempotencyKey.update.mock.calls[0][0].data.statusCode).toBe(
+      201,
+    );
   });
 
   it('returns 409 when another retry won the takeover', async () => {
@@ -150,22 +192,30 @@ describe('IdempotencyInterceptor', () => {
     prisma.idempotencyKey.updateMany.mockResolvedValue({ count: 0 });
     const handler = { handle: jest.fn() };
 
-    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).rejects.toThrow(
-      ConflictException,
-    );
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('k1').context, handler)),
+    ).rejects.toThrow(ConflictException);
     expect(handler.handle).not.toHaveBeenCalled();
   });
 
   it('treats an expired row as free, even with a different body', async () => {
     prisma.idempotencyKey.create.mockRejectedValue(p2002);
     prisma.idempotencyKey.findUnique.mockResolvedValue(
-      existing({ statusCode: 201, requestHash: 'old', expiresAt: new Date(Date.now() - 1000) }),
+      existing({
+        statusCode: 201,
+        requestHash: 'old',
+        expiresAt: new Date(Date.now() - 1000),
+      }),
     );
     prisma.idempotencyKey.updateMany.mockResolvedValue({ count: 1 });
     const handler = { handle: jest.fn(() => of({ id: 'p2' })) };
 
-    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).resolves.toEqual({ id: 'p2' });
-    expect(prisma.idempotencyKey.updateMany.mock.calls[0][0].data).toMatchObject({
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('k1').context, handler)),
+    ).resolves.toEqual({ id: 'p2' });
+    expect(
+      prisma.idempotencyKey.updateMany.mock.calls[0][0].data,
+    ).toMatchObject({
       statusCode: 0,
       requestHash: hashRequestBody(BODY),
     });
@@ -173,10 +223,14 @@ describe('IdempotencyInterceptor', () => {
 
   it('retries a failed store once', async () => {
     prisma.idempotencyKey.create.mockResolvedValue({});
-    prisma.idempotencyKey.update.mockRejectedValueOnce(new Error('db blip')).mockResolvedValueOnce({});
+    prisma.idempotencyKey.update
+      .mockRejectedValueOnce(new Error('db blip'))
+      .mockResolvedValueOnce({});
     const handler = { handle: jest.fn(() => of({ id: 'p1' })) };
 
-    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).resolves.toEqual({ id: 'p1' });
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('k1').context, handler)),
+    ).resolves.toEqual({ id: 'p1' });
     expect(prisma.idempotencyKey.update).toHaveBeenCalledTimes(2);
     expect(prisma.idempotencyKey.delete).not.toHaveBeenCalled();
   });
@@ -186,21 +240,29 @@ describe('IdempotencyInterceptor', () => {
     prisma.idempotencyKey.update.mockRejectedValue(new Error('db down'));
     const handler = { handle: jest.fn(() => of({ id: 'p1' })) };
 
-    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).resolves.toEqual({ id: 'p1' });
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('k1').context, handler)),
+    ).resolves.toEqual({ id: 'p1' });
     expect(prisma.idempotencyKey.delete).toHaveBeenCalledTimes(1);
   });
 
   it('releases the claim when the handler fails', async () => {
     prisma.idempotencyKey.create.mockResolvedValue({});
-    const handler = { handle: jest.fn(() => throwError(() => new Error('boom'))) };
+    const handler = {
+      handle: jest.fn(() => throwError(() => new Error('boom'))),
+    };
 
-    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).rejects.toThrow('boom');
+    await expect(
+      lastValueFrom(interceptor.intercept(ctx('k1').context, handler)),
+    ).rejects.toThrow('boom');
     expect(prisma.idempotencyKey.delete).toHaveBeenCalled();
   });
 
   it('rejects keys longer than 128 chars', () => {
-    expect(() => interceptor.intercept(ctx('x'.repeat(129)).context, { handle: jest.fn() })).toThrow(
-      BadRequestException,
-    );
+    expect(() =>
+      interceptor.intercept(ctx('x'.repeat(129)).context, {
+        handle: jest.fn(),
+      }),
+    ).toThrow(BadRequestException);
   });
 });

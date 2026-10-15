@@ -19,12 +19,16 @@ export class TagService {
     return this.prisma.tag.findMany({
       where: { clientId },
       orderBy: { slug: 'asc' },
-      ...(withUsage ? { include: { _count: { select: { events: true } } } } : {}),
+      ...(withUsage
+        ? { include: { _count: { select: { events: true } } } }
+        : {}),
     });
   }
 
   async getTagById(tagId: string, clientId: string) {
-    const tag = await this.prisma.tag.findFirst({ where: { id: tagId, clientId } });
+    const tag = await this.prisma.tag.findFirst({
+      where: { id: tagId, clientId },
+    });
     if (!tag) throw new NotFoundException(`Tag ${tagId} not found`);
     return tag;
   }

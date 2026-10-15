@@ -1,7 +1,15 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { BastionSuperAdminGuard } from './bastion-super-admin.guard';
-import { BastionJwksService, BASTION_OPTIONS, BastionAuditService } from '@heyatom/bastion-client/nest';
+import {
+  BastionJwksService,
+  BASTION_OPTIONS,
+  BastionAuditService,
+} from '@heyatom/bastion-client/nest';
 const mockJwks = { verify: jest.fn() };
 
 function makeCtx(headers: Record<string, string> = {}): ExecutionContext {
@@ -31,7 +39,14 @@ describe('BastionSuperAdminGuard', () => {
       providers: [
         BastionSuperAdminGuard,
         { provide: BastionJwksService, useValue: mockJwks },
-        { provide: BASTION_OPTIONS, useValue: { baseUrl: 'http://bastion', serviceSlug: 'gatherly', acceptedAppSlugs: ['gatherly', 'meridian'] } },
+        {
+          provide: BASTION_OPTIONS,
+          useValue: {
+            baseUrl: 'http://bastion',
+            serviceSlug: 'gatherly',
+            acceptedAppSlugs: ['gatherly', 'meridian'],
+          },
+        },
         { provide: BastionAuditService, useValue: { write: jest.fn() } },
       ],
     }).compile();
@@ -51,13 +66,19 @@ describe('BastionSuperAdminGuard', () => {
   });
 
   it('throws 401 when token is a machine token (type "service_client")', async () => {
-    mockJwks.verify.mockResolvedValue({ ...validPayload, type: 'service_client' });
+    mockJwks.verify.mockResolvedValue({
+      ...validPayload,
+      type: 'service_client',
+    });
     const ctx = makeCtx({ authorization: 'Bearer tok' });
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
   it('throws 403 when appSlug is not in the allowlist', async () => {
-    mockJwks.verify.mockResolvedValue({ ...validPayload, appSlug: 'other-app' });
+    mockJwks.verify.mockResolvedValue({
+      ...validPayload,
+      appSlug: 'other-app',
+    });
     const ctx = makeCtx({ authorization: 'Bearer tok' });
     await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
   });

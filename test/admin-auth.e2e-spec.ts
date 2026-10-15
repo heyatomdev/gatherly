@@ -59,7 +59,9 @@ describe('Admin API auth (e2e)', () => {
       .compile();
 
     app = module.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
 
     jwks = module.get(BastionJwksService);
@@ -77,7 +79,9 @@ describe('Admin API auth (e2e)', () => {
   describe('GET /admin/events', () => {
     it('returns 200 with valid ADMIN user JWT', async () => {
       jwks.verify.mockResolvedValue(makePayload() as any);
-      jest.spyOn(prisma.client, 'findUnique').mockResolvedValue(activeClient as any);
+      jest
+        .spyOn(prisma.client, 'findUnique')
+        .mockResolvedValue(activeClient as any);
       jest.spyOn(prisma.event, 'findMany').mockResolvedValue([]);
       jest.spyOn(prisma.event, 'count').mockResolvedValue(0);
       jest.spyOn(prisma, '$transaction').mockResolvedValue([[], 0] as any);
@@ -93,7 +97,9 @@ describe('Admin API auth (e2e)', () => {
     });
 
     it('returns 401 when JWT type is "service_client"', async () => {
-      jwks.verify.mockResolvedValue(makePayload({ type: 'service_client' }) as any);
+      jwks.verify.mockResolvedValue(
+        makePayload({ type: 'service_client' }) as any,
+      );
 
       await request(app.getHttpServer())
         .get('/admin/events')
@@ -132,7 +138,9 @@ describe('Admin API auth (e2e)', () => {
     });
 
     it('returns 403 when no client exists for tenantId (cross-tenant isolation)', async () => {
-      jwks.verify.mockResolvedValue(makePayload({ tenantId: 'unknown-tenant' }) as any);
+      jwks.verify.mockResolvedValue(
+        makePayload({ tenantId: 'unknown-tenant' }) as any,
+      );
       jest.spyOn(prisma.client, 'findUnique').mockResolvedValue(null);
 
       await request(app.getHttpServer())
@@ -143,7 +151,9 @@ describe('Admin API auth (e2e)', () => {
 
     it('OWNER role is accepted', async () => {
       jwks.verify.mockResolvedValue(makePayload({ role: 'OWNER' }) as any);
-      jest.spyOn(prisma.client, 'findUnique').mockResolvedValue(activeClient as any);
+      jest
+        .spyOn(prisma.client, 'findUnique')
+        .mockResolvedValue(activeClient as any);
       jest.spyOn(prisma, '$transaction').mockResolvedValue([[], 0] as any);
 
       await request(app.getHttpServer())
@@ -155,7 +165,9 @@ describe('Admin API auth (e2e)', () => {
     it('accepts a real Bastion user token that has no "type" field', async () => {
       // makePayload() already omits `type` — this documents the real token shape.
       jwks.verify.mockResolvedValue(makePayload() as any);
-      jest.spyOn(prisma.client, 'findUnique').mockResolvedValue(activeClient as any);
+      jest
+        .spyOn(prisma.client, 'findUnique')
+        .mockResolvedValue(activeClient as any);
       jest.spyOn(prisma, '$transaction').mockResolvedValue([[], 0] as any);
 
       await request(app.getHttpServer())
@@ -167,8 +179,12 @@ describe('Admin API auth (e2e)', () => {
     it('accepts an allowlisted console app token (appSlug=meridian)', async () => {
       // Meridian forwards its own user-JWT (appSlug=meridian); refresh is app-bound
       // so it cannot be exchanged for a gatherly-scoped token.
-      jwks.verify.mockResolvedValue(makePayload({ appSlug: 'meridian' }) as any);
-      jest.spyOn(prisma.client, 'findUnique').mockResolvedValue(activeClient as any);
+      jwks.verify.mockResolvedValue(
+        makePayload({ appSlug: 'meridian' }) as any,
+      );
+      jest
+        .spyOn(prisma.client, 'findUnique')
+        .mockResolvedValue(activeClient as any);
       jest.spyOn(prisma, '$transaction').mockResolvedValue([[], 0] as any);
 
       await request(app.getHttpServer())

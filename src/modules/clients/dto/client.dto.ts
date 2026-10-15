@@ -13,7 +13,10 @@ export class CreateClientDto {
   @MaxLength(100)
   name: string;
 
-  @ApiPropertyOptional({ description: 'Bastion tenant id to bind this client to (enables Bastion service-client + admin auth)' })
+  @ApiPropertyOptional({
+    description:
+      'Bastion tenant id to bind this client to (enables Bastion service-client + admin auth)',
+  })
   @IsOptional()
   @IsString()
   tenantId?: string;
@@ -43,7 +46,9 @@ export class UpdateClientDto {
   @MaxLength(100)
   name?: string;
 
-  @ApiPropertyOptional({ description: 'Bastion tenant id to bind this client to' })
+  @ApiPropertyOptional({
+    description: 'Bastion tenant id to bind this client to',
+  })
   @IsOptional()
   @IsString()
   tenantId?: string;

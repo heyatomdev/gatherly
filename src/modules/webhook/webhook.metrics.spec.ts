@@ -40,9 +40,9 @@ describe('WebhookMetrics', () => {
     ]);
 
     for (const status of Object.values(WebhookDeliveryStatus)) {
-      expect(
-        await gaugeValue('gatherly_webhook_deliveries', { status }),
-      ).toBe(status === WebhookDeliveryStatus.PENDING ? 3 : 0);
+      expect(await gaugeValue('gatherly_webhook_deliveries', { status })).toBe(
+        status === WebhookDeliveryStatus.PENDING ? 3 : 0,
+      );
     }
   });
 

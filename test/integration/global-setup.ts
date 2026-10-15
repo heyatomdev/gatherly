@@ -1,9 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __PG_CONTAINER__: StartedPostgreSqlContainer | undefined;
 }
 
@@ -21,9 +23,13 @@ export default async function globalSetup() {
   process.env.DATABASE_URL = container.getConnectionUri();
 
   const root = join(__dirname, '..', '..');
-  execFileSync(join(root, 'node_modules', '.bin', 'prisma'), ['migrate', 'deploy'], {
-    cwd: root,
-    env: process.env,
-    stdio: 'pipe',
-  });
+  execFileSync(
+    join(root, 'node_modules', '.bin', 'prisma'),
+    ['migrate', 'deploy'],
+    {
+      cwd: root,
+      env: process.env,
+      stdio: 'pipe',
+    },
+  );
 }

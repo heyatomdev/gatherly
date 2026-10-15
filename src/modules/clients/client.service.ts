@@ -1,8 +1,16 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
-import { WebhookUrlError, assertPublicWebhookUrl } from '@heyatom/nest-common/webhooks';
+import {
+  WebhookUrlError,
+  assertPublicWebhookUrl,
+} from '@heyatom/nest-common/webhooks';
 
 const CLIENT_SELECT_SAFE = {
   id: true,
@@ -37,7 +45,10 @@ export class ClientService {
       });
     } catch (error: any) {
       if (error.code === 'P2002') {
-        throw new ConflictException({ code: 'TENANT_TAKEN', message: 'Tenant già associato a un altro client' });
+        throw new ConflictException({
+          code: 'TENANT_TAKEN',
+          message: 'Tenant già associato a un altro client',
+        });
       }
       throw error;
     }
@@ -51,7 +62,10 @@ export class ClientService {
   }
 
   async getClient(id: string) {
-    const client = await this.prisma.client.findUnique({ where: { id }, select: CLIENT_SELECT_SAFE });
+    const client = await this.prisma.client.findUnique({
+      where: { id },
+      select: CLIENT_SELECT_SAFE,
+    });
     if (!client) throw new NotFoundException(`Client ${id} not found`);
     return client;
   }
@@ -67,7 +81,10 @@ export class ClientService {
       });
     } catch (error: any) {
       if (error.code === 'P2002') {
-        throw new ConflictException({ code: 'TENANT_TAKEN', message: 'Tenant già associato a un altro client' });
+        throw new ConflictException({
+          code: 'TENANT_TAKEN',
+          message: 'Tenant già associato a un altro client',
+        });
       }
       throw error;
     }
@@ -137,7 +154,11 @@ async function assertSafeWebhookUrl(url: string): Promise<void> {
   try {
     await assertPublicWebhookUrl(url);
   } catch (error) {
-    if (error instanceof WebhookUrlError) throw new BadRequestException({ code: error.code, message: error.message });
+    if (error instanceof WebhookUrlError)
+      throw new BadRequestException({
+        code: error.code,
+        message: error.message,
+      });
     throw error;
   }
 }

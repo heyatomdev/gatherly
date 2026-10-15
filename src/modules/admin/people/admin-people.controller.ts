@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
@@ -21,6 +28,9 @@ export class AdminPeopleController {
 
   @Get(':key')
   profile(@Request() req, @Param('key') key: string) {
-    return this.people.getPersonProfile(req.adminClient.id, decodeURIComponent(key));
+    return this.people.getPersonProfile(
+      req.adminClient.id,
+      decodeURIComponent(key),
+    );
   }
 }

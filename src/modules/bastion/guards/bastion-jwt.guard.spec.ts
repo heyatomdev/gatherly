@@ -1,15 +1,25 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { BastionJwtGuard } from './bastion-jwt.guard';
-import { BastionJwksService, BASTION_OPTIONS } from '@heyatom/bastion-client/nest';
+import {
+  BastionJwksService,
+  BASTION_OPTIONS,
+} from '@heyatom/bastion-client/nest';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 
 const mockJwks = { verify: jest.fn() };
 const mockPrisma = { client: { findUnique: jest.fn() } };
 const mockReflector = { getAllAndOverride: jest.fn().mockReturnValue(false) };
 
-function makeCtx(headers: Record<string, string> = {}, path = '/events'): ExecutionContext {
+function makeCtx(
+  headers: Record<string, string> = {},
+  path = '/events',
+): ExecutionContext {
   const req = { headers, path, user: undefined, client: undefined };
   return {
     switchToHttp: () => ({ getRequest: () => req }),
@@ -51,7 +61,14 @@ describe('BastionJwtGuard', () => {
         BastionJwtGuard,
         { provide: BastionJwksService, useValue: mockJwks },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: BASTION_OPTIONS, useValue: { baseUrl: 'http://bastion', serviceSlug: 'gatherly', acceptedAppSlugs: ['gatherly', 'meridian'] } },
+        {
+          provide: BASTION_OPTIONS,
+          useValue: {
+            baseUrl: 'http://bastion',
+            serviceSlug: 'gatherly',
+            acceptedAppSlugs: ['gatherly', 'meridian'],
+          },
+        },
         { provide: Reflector, useValue: mockReflector },
       ],
     }).compile();
@@ -65,7 +82,9 @@ describe('BastionJwtGuard', () => {
     mockJwks.verify.mockResolvedValue(machineToken);
     mockPrisma.client.findUnique.mockResolvedValue(activeClient);
 
-    await expect(guard.canActivate(makeCtx({ authorization: 'Bearer tok' }))).resolves.toBe(true);
+    await expect(
+      guard.canActivate(makeCtx({ authorization: 'Bearer tok' })),
+    ).resolves.toBe(true);
   });
 
   // The hole this guard had: `jwks.verify()` succeeding only proves Bastion issued
@@ -75,21 +94,24 @@ describe('BastionJwtGuard', () => {
     mockJwks.verify.mockResolvedValue(userToken);
     mockPrisma.client.findUnique.mockResolvedValue(activeClient);
 
-    await expect(guard.canActivate(makeCtx({ authorization: 'Bearer tok' }))).rejects.toThrow(
-      UnauthorizedException,
-    );
+    await expect(
+      guard.canActivate(makeCtx({ authorization: 'Bearer tok' })),
+    ).rejects.toThrow(UnauthorizedException);
     expect(mockPrisma.client.findUnique).not.toHaveBeenCalled();
   });
 
   // Bastion signs the whole fleet with one key, so another service's machine token
   // verifies here too. It must not authenticate.
   it('rejects a machine token minted for another service', async () => {
-    mockJwks.verify.mockResolvedValue({ ...machineToken, serviceSlug: 'herald' });
+    mockJwks.verify.mockResolvedValue({
+      ...machineToken,
+      serviceSlug: 'herald',
+    });
     mockPrisma.client.findUnique.mockResolvedValue(activeClient);
 
-    await expect(guard.canActivate(makeCtx({ authorization: 'Bearer tok' }))).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      guard.canActivate(makeCtx({ authorization: 'Bearer tok' })),
+    ).rejects.toThrow(ForbiddenException);
     expect(mockPrisma.client.findUnique).not.toHaveBeenCalled();
   });
 
@@ -97,22 +119,27 @@ describe('BastionJwtGuard', () => {
     const { serviceSlug, ...noSlug } = machineToken;
     mockJwks.verify.mockResolvedValue(noSlug);
 
-    await expect(guard.canActivate(makeCtx({ authorization: 'Bearer tok' }))).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      guard.canActivate(makeCtx({ authorization: 'Bearer tok' })),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('rejects when the tenant has no active client', async () => {
     mockJwks.verify.mockResolvedValue(machineToken);
-    mockPrisma.client.findUnique.mockResolvedValue({ ...activeClient, isActive: false });
+    mockPrisma.client.findUnique.mockResolvedValue({
+      ...activeClient,
+      isActive: false,
+    });
 
-    await expect(guard.canActivate(makeCtx({ authorization: 'Bearer tok' }))).rejects.toThrow(
-      UnauthorizedException,
-    );
+    await expect(
+      guard.canActivate(makeCtx({ authorization: 'Bearer tok' })),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it('rejects a request with no Bearer token', async () => {
-    await expect(guard.canActivate(makeCtx())).rejects.toThrow(UnauthorizedException);
+    await expect(guard.canActivate(makeCtx())).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('lets @Public() routes through without a token', async () => {
@@ -125,11 +152,15 @@ describe('BastionJwtGuard', () => {
   // Not a hole: /admin is guarded per-controller by BastionUserGuard, which takes a
   // user token. This guard steps aside rather than demanding a machine token there.
   it('steps aside on /admin, which BastionUserGuard owns', async () => {
-    await expect(guard.canActivate(makeCtx({}, '/admin/events'))).resolves.toBe(true);
+    await expect(guard.canActivate(makeCtx({}, '/admin/events'))).resolves.toBe(
+      true,
+    );
     expect(mockJwks.verify).not.toHaveBeenCalled();
   });
 
   it('does not step aside on paths that merely start with "admin"', async () => {
-    await expect(guard.canActivate(makeCtx({}, '/administrators'))).rejects.toThrow(UnauthorizedException);
+    await expect(
+      guard.canActivate(makeCtx({}, '/administrators')),
+    ).rejects.toThrow(UnauthorizedException);
   });
 });

@@ -69,7 +69,12 @@ export class AdminParticipantsController {
     @Param('participantId') participantId: string,
     @Body() body: UpdateParticipantStatusDto,
   ) {
-    return this.events.updateParticipantStatus(participantId, eventId, req.adminClient.id, body.status);
+    return this.events.updateParticipantStatus(
+      participantId,
+      eventId,
+      req.adminClient.id,
+      body.status,
+    );
   }
 
   @Put(':participantId/checkin')
@@ -79,7 +84,11 @@ export class AdminParticipantsController {
     @Param('eventId') eventId: string,
     @Param('participantId') participantId: string,
   ) {
-    return this.events.checkInParticipant(participantId, eventId, req.adminClient.id);
+    return this.events.checkInParticipant(
+      participantId,
+      eventId,
+      req.adminClient.id,
+    );
   }
 
   @Delete(':participantId')
@@ -89,6 +98,10 @@ export class AdminParticipantsController {
     @Param('eventId') eventId: string,
     @Param('participantId') participantId: string,
   ) {
-    return this.events.removeParticipant(eventId, req.adminClient.id, participantId);
+    return this.events.removeParticipant(
+      eventId,
+      req.adminClient.id,
+      participantId,
+    );
   }
 }

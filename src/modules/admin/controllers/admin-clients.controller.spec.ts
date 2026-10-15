@@ -11,7 +11,10 @@ describe('AdminClientsController audit', () => {
     revokeClient: jest.fn(async () => client),
     reactivateClient: jest.fn(async () => client),
     regenerateToken: jest.fn(async () => ({ id: 'c1', token: 'new-token' })),
-    regenerateWebhookSecret: jest.fn(async () => ({ id: 'c1', webhookSecret: 'new-secret' })),
+    regenerateWebhookSecret: jest.fn(async () => ({
+      id: 'c1',
+      webhookSecret: 'new-secret',
+    })),
   };
   const audit = { writeAsAdmin: jest.fn() };
   const controller = new AdminClientsController(clients as any, audit as any);
@@ -39,13 +42,15 @@ describe('AdminClientsController audit', () => {
       'client.token_regenerated',
       'client.webhook_secret_regenerated',
     ]);
-    for (const [, actor] of audit.writeAsAdmin.mock.calls) expect(actor).toBe(req.adminUser);
+    for (const [, actor] of audit.writeAsAdmin.mock.calls)
+      expect(actor).toBe(req.adminUser);
   });
 
   it('uses event names Bastion accepts', async () => {
     await callAll();
 
-    for (const [event] of audit.writeAsAdmin.mock.calls) expect(event).toMatch(BASTION_EVENT_NAME);
+    for (const [event] of audit.writeAsAdmin.mock.calls)
+      expect(event).toMatch(BASTION_EVENT_NAME);
   });
 
   it('never logs the token or the webhook secret', async () => {

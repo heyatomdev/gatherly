@@ -10,7 +10,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+} from 'class-validator';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { TenantAdminRoleGuard } from '@/modules/bastion/guards/tenant-admin-role.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
@@ -60,7 +66,9 @@ export class AdminSettingsController {
     this.audit.writeAsAdmin('settings.updated', req.adminUser, {
       clientId: req.adminClient.id,
       fields: Object.keys(dto),
-      ...(dto.webhookUrl !== undefined && { webhookUrlChanged: dto.webhookUrl !== req.adminClient.webhookUrl }),
+      ...(dto.webhookUrl !== undefined && {
+        webhookUrlChanged: dto.webhookUrl !== req.adminClient.webhookUrl,
+      }),
     });
     return client;
   }
@@ -69,9 +77,15 @@ export class AdminSettingsController {
   @UseGuards(TenantAdminRoleGuard)
   @HttpCode(HttpStatus.OK)
   async regenerateWebhookSecret(@Request() req) {
-    const result = await this.clients.regenerateWebhookSecret(req.adminClient.id);
+    const result = await this.clients.regenerateWebhookSecret(
+      req.adminClient.id,
+    );
     // Never log the secret itself.
-    this.audit.writeAsAdmin('settings.webhook_secret_regenerated', req.adminUser, { clientId: req.adminClient.id });
+    this.audit.writeAsAdmin(
+      'settings.webhook_secret_regenerated',
+      req.adminUser,
+      { clientId: req.adminClient.id },
+    );
     return result;
   }
 }

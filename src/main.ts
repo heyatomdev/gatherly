@@ -4,12 +4,19 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
-import { parseCorsOrigins, setupHttpApp, setupSwagger } from '@heyatom/nest-common';
+import {
+  parseCorsOrigins,
+  setupHttpApp,
+  setupSwagger,
+} from '@heyatom/nest-common';
 import { AppModule } from './modules/app/app.module';
 import { APP_VERSION } from './common/app-version';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true, rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   app.useLogger(app.get(Logger));
 
   // Defaults live in config.validation.ts — single source of truth.
@@ -26,7 +33,11 @@ async function bootstrap() {
   // Resolved once in config validation (swaggerEnabled): explicit ENABLE_SWAGGER, else dev/test only.
   const swagger = config.get<string>('ENABLE_SWAGGER') === 'true';
   if (swagger) {
-    setupSwagger(app, { title: 'Gatherly', version: APP_VERSION, configure: (b) => b.addBearerAuth() });
+    setupSwagger(app, {
+      title: 'Gatherly',
+      version: APP_VERSION,
+      configure: (b) => b.addBearerAuth(),
+    });
   }
 
   await app.listen(port);
@@ -39,6 +50,9 @@ async function bootstrap() {
 
 bootstrap().catch((err: Error) => {
   // The pino logger may not exist yet (config validation, DI errors).
-  new NestLogger('Bootstrap').error(`Bootstrap failed: ${err.message}`, err.stack);
+  new NestLogger('Bootstrap').error(
+    `Bootstrap failed: ${err.message}`,
+    err.stack,
+  );
   process.exit(1);
 });

@@ -12,7 +12,9 @@ describe('AdminPeopleService.listPeople pagination', () => {
   );
 
   it('pages the raw query with LIMIT/OFFSET from PageParams and builds meta with paginate()', async () => {
-    prisma.$queryRaw.mockResolvedValue([{ key: 'k', display_name: 'A', total_count: 25 }]);
+    prisma.$queryRaw.mockResolvedValue([
+      { key: 'k', display_name: 'A', total_count: 25 },
+    ]);
     // As the global ValidationPipe delivers it: query strings, transformed to an instance.
     const query = plainToInstance(PeopleQueryDto, { page: '2', limit: '10' });
 
@@ -22,7 +24,12 @@ describe('AdminPeopleService.listPeople pagination', () => {
     const [strings, ...values] = prisma.$queryRaw.mock.calls[0];
     expect(strings.join('?')).toMatch(/LIMIT \? OFFSET \?\s*$/);
     expect(values.slice(-2)).toEqual([10, 10]);
-    expect(result.meta).toEqual({ total: 25, page: 2, limit: 10, totalPages: 3 });
+    expect(result.meta).toEqual({
+      total: 25,
+      page: 2,
+      limit: 10,
+      totalPages: 3,
+    });
     expect(result.data[0]).toMatchObject({ key: 'k', displayName: 'A' });
   });
 });

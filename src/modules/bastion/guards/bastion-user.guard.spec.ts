@@ -1,7 +1,15 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { BastionUserGuard } from './bastion-user.guard';
-import { BastionJwksService, BASTION_OPTIONS, BastionAuditService } from '@heyatom/bastion-client/nest';
+import {
+  BastionJwksService,
+  BASTION_OPTIONS,
+  BastionAuditService,
+} from '@heyatom/bastion-client/nest';
 import { PrismaService } from '@/modules/prisma/prisma.service';
 
 const mockJwks = { verify: jest.fn() };
@@ -37,7 +45,21 @@ describe('BastionUserGuard', () => {
         BastionUserGuard,
         { provide: BastionJwksService, useValue: mockJwks },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: BASTION_OPTIONS, useValue: { baseUrl: 'http://bastion', serviceSlug: 'gatherly', acceptedAppSlugs: ['gatherly', 'meridian'], acceptedRoles: ['ADMIN', 'OWNER', 'SUPER_ADMIN', 'MODERATOR', 'AUTHOR'] } },
+        {
+          provide: BASTION_OPTIONS,
+          useValue: {
+            baseUrl: 'http://bastion',
+            serviceSlug: 'gatherly',
+            acceptedAppSlugs: ['gatherly', 'meridian'],
+            acceptedRoles: [
+              'ADMIN',
+              'OWNER',
+              'SUPER_ADMIN',
+              'MODERATOR',
+              'AUTHOR',
+            ],
+          },
+        },
         { provide: BastionAuditService, useValue: { write: jest.fn() } },
       ],
     }).compile();
@@ -57,13 +79,19 @@ describe('BastionUserGuard', () => {
   });
 
   it('throws 401 when token is a machine token (type "service_client")', async () => {
-    mockJwks.verify.mockResolvedValue({ ...validPayload, type: 'service_client' });
+    mockJwks.verify.mockResolvedValue({
+      ...validPayload,
+      type: 'service_client',
+    });
     const ctx = makeCtx({ authorization: 'Bearer tok' });
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
   it('throws 403 when appSlug is not in the allowlist', async () => {
-    mockJwks.verify.mockResolvedValue({ ...validPayload, appSlug: 'other-app' });
+    mockJwks.verify.mockResolvedValue({
+      ...validPayload,
+      appSlug: 'other-app',
+    });
     const ctx = makeCtx({ authorization: 'Bearer tok' });
     await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
   });
@@ -96,7 +124,10 @@ describe('BastionUserGuard', () => {
 
   it('throws 403 when client is inactive', async () => {
     mockJwks.verify.mockResolvedValue(validPayload);
-    mockPrisma.client.findUnique.mockResolvedValue({ ...activeClient, isActive: false });
+    mockPrisma.client.findUnique.mockResolvedValue({
+      ...activeClient,
+      isActive: false,
+    });
     const ctx = makeCtx({ authorization: 'Bearer tok' });
     await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
   });

@@ -32,14 +32,19 @@ function canonicalJson(value: unknown): string {
   if (value && typeof value === 'object') {
     return `{${Object.keys(value)
       .sort()
-      .map((k) => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`)
+      .map(
+        (k) =>
+          `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`,
+      )
       .join(',')}}`;
   }
   return JSON.stringify(value) ?? 'null';
 }
 
 export function hashRequestBody(body: unknown): string {
-  return createHash('sha256').update(canonicalJson(body ?? null)).digest('hex');
+  return createHash('sha256')
+    .update(canonicalJson(body ?? null))
+    .digest('hex');
 }
 
 @Injectable()
@@ -56,8 +61,13 @@ export class IdempotencyInterceptor implements NestInterceptor {
     if (!idempotencyKey || !req.client) {
       return next.handle();
     }
-    if (typeof idempotencyKey !== 'string' || idempotencyKey.length > MAX_KEY_LENGTH) {
-      throw new BadRequestException(`Idempotency-Key must be at most ${MAX_KEY_LENGTH} characters`);
+    if (
+      typeof idempotencyKey !== 'string' ||
+      idempotencyKey.length > MAX_KEY_LENGTH
+    ) {
+      throw new BadRequestException(
+        `Idempotency-Key must be at most ${MAX_KEY_LENGTH} characters`,
+      );
     }
 
     const where = {
@@ -86,9 +96,11 @@ export class IdempotencyInterceptor implements NestInterceptor {
             return responseBody;
           }),
           catchError((err) =>
-            from(this.prisma.idempotencyKey.delete({ where }).catch(() => undefined)).pipe(
-              switchMap(() => throwError(() => err)),
-            ),
+            from(
+              this.prisma.idempotencyKey
+                .delete({ where })
+                .catch(() => undefined),
+            ).pipe(switchMap(() => throwError(() => err))),
           ),
         );
       }),
@@ -100,16 +112,26 @@ export class IdempotencyInterceptor implements NestInterceptor {
    * key is not stuck IN_PROGRESS (a retry with the same key then re-runs the handler — logged as
    * error because that can duplicate the side effect).
    */
-  private async store(where: { key_clientId_path: ClaimKey }, responseBody: unknown, statusCode: number) {
+  private async store(
+    where: { key_clientId_path: ClaimKey },
+    responseBody: unknown,
+    statusCode: number,
+  ) {
     const save = () =>
       this.prisma.idempotencyKey.update({
         where,
-        data: { responseBody: (responseBody ?? Prisma.JsonNull) as Prisma.InputJsonValue, statusCode },
+        data: {
+          responseBody: (responseBody ??
+            Prisma.JsonNull) as Prisma.InputJsonValue,
+          statusCode,
+        },
       });
     try {
       await save().catch(save);
     } catch (err) {
-      this.logger.error(`idempotency store failed, releasing key: ${(err as Error).message}`);
+      this.logger.error(
+        `idempotency store failed, releasing key: ${(err as Error).message}`,
+      );
       await this.prisma.idempotencyKey.delete({ where }).catch(() => undefined);
     }
   }
@@ -128,15 +150,23 @@ export class IdempotencyInterceptor implements NestInterceptor {
       expiresAt: new Date(Date.now() + TTL_MS),
     });
     try {
-      await this.prisma.idempotencyKey.create({ data: { ...data, ...fresh() } });
+      await this.prisma.idempotencyKey.create({
+        data: { ...data, ...fresh() },
+      });
       return null;
     } catch (error) {
       if ((error as { code?: string })?.code !== 'P2002') throw error;
     }
 
-    const existing = await this.prisma.idempotencyKey.findUnique({ where: { key_clientId_path: data } });
+    const existing = await this.prisma.idempotencyKey.findUnique({
+      where: { key_clientId_path: data },
+    });
     // Row vanished between insert and read (the original request failed and released it).
-    if (!existing) throw new ConflictException({ code: 'IDEMPOTENCY_IN_PROGRESS', message: 'A request with this Idempotency-Key is still in progress' });
+    if (!existing)
+      throw new ConflictException({
+        code: 'IDEMPOTENCY_IN_PROGRESS',
+        message: 'A request with this Idempotency-Key is still in progress',
+      });
 
     const now = Date.now();
     const expired = existing.expiresAt.getTime() <= now;
@@ -145,22 +175,34 @@ export class IdempotencyInterceptor implements NestInterceptor {
       if (existing.requestHash && existing.requestHash !== requestHash) {
         throw new UnprocessableEntityException({
           code: 'IDEMPOTENCY_KEY_REUSED',
-          message: 'Idempotency-Key was already used with a different request body',
+          message:
+            'Idempotency-Key was already used with a different request body',
         });
       }
       if (existing.statusCode !== IN_PROGRESS) return existing;
       if (existing.createdAt.getTime() > now - STALE_CLAIM_MS) {
-        throw new ConflictException({ code: 'IDEMPOTENCY_IN_PROGRESS', message: 'A request with this Idempotency-Key is still in progress' });
+        throw new ConflictException({
+          code: 'IDEMPOTENCY_IN_PROGRESS',
+          message: 'A request with this Idempotency-Key is still in progress',
+        });
       }
     }
 
     // Expired (cleanup cron not run yet) or abandoned: compare-and-set on the row we read, so
     // only one of several concurrent retries wins the takeover.
     const { count } = await this.prisma.idempotencyKey.updateMany({
-      where: { id: existing.id, statusCode: existing.statusCode, createdAt: existing.createdAt },
+      where: {
+        id: existing.id,
+        statusCode: existing.statusCode,
+        createdAt: existing.createdAt,
+      },
       data: fresh(),
     });
-    if (count !== 1) throw new ConflictException({ code: 'IDEMPOTENCY_IN_PROGRESS', message: 'A request with this Idempotency-Key is still in progress' });
+    if (count !== 1)
+      throw new ConflictException({
+        code: 'IDEMPOTENCY_IN_PROGRESS',
+        message: 'A request with this Idempotency-Key is still in progress',
+      });
     return null;
   }
 }

@@ -26,7 +26,12 @@ export class AdminTagsController {
   constructor(private readonly tags: TagService) {}
 
   @Get()
-  @ApiQuery({ name: 'withUsage', required: false, type: Boolean, description: 'Include event count and orphan flag per tag' })
+  @ApiQuery({
+    name: 'withUsage',
+    required: false,
+    type: Boolean,
+    description: 'Include event count and orphan flag per tag',
+  })
   list(@Request() req, @Query('withUsage') withUsage?: string) {
     return this.tags.getTagsByClient(req.adminClient.id, withUsage === 'true');
   }

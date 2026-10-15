@@ -19,14 +19,19 @@ function controllerFiles(dir: string): string[] {
   });
 }
 
-const adminControllers = controllerFiles(join(__dirname, '..', '..')).flatMap((file) =>
-  Object.values(require(file) as Record<string, unknown>)
-    .filter((exp): exp is Function => typeof exp === 'function')
-    .filter((cls) => {
-      const paths = [Reflect.getMetadata(PATH_METADATA, cls)].flat();
-      return paths.some((p) => typeof p === 'string' && /^\/?admin(\/|$)/.test(p));
-    })
-    .map((cls) => [cls.name, cls] as const),
+const adminControllers = controllerFiles(join(__dirname, '..', '..')).flatMap(
+  (file) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic load of every controller file
+    Object.values(require(file) as Record<string, unknown>)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type -- any exported class
+      .filter((exp): exp is Function => typeof exp === 'function')
+      .filter((cls) => {
+        const paths = [Reflect.getMetadata(PATH_METADATA, cls)].flat();
+        return paths.some(
+          (p) => typeof p === 'string' && /^\/?admin(\/|$)/.test(p),
+        );
+      })
+      .map((cls) => [cls.name, cls] as const),
 );
 
 describe('admin controllers', () => {
@@ -34,10 +39,15 @@ describe('admin controllers', () => {
     expect(adminControllers.length).toBeGreaterThanOrEqual(9);
   });
 
-  it.each(adminControllers)('%s has a class-level auth guard and AdminThrottlerGuard', (_, cls) => {
-    const guards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, cls) ?? [];
-    const authGuards = guards.filter((g) => g === BastionUserGuard || g === BastionSuperAdminGuard);
-    expect(authGuards).toHaveLength(1);
-    expect(guards).toContain(AdminThrottlerGuard);
-  });
+  it.each(adminControllers)(
+    '%s has a class-level auth guard and AdminThrottlerGuard',
+    (_, cls) => {
+      const guards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, cls) ?? [];
+      const authGuards = guards.filter(
+        (g) => g === BastionUserGuard || g === BastionSuperAdminGuard,
+      );
+      expect(authGuards).toHaveLength(1);
+      expect(guards).toContain(AdminThrottlerGuard);
+    },
+  );
 });

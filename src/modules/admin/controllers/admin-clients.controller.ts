@@ -11,12 +11,20 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { BastionSuperAdminGuard } from '@/modules/bastion/guards/bastion-super-admin.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { BastionAuditService } from '@heyatom/bastion-client/nest';
 import { ClientService } from '@/modules/clients/client.service';
-import { CreateClientDto, UpdateClientDto } from '@/modules/clients/dto/client.dto';
+import {
+  CreateClientDto,
+  UpdateClientDto,
+} from '@/modules/clients/dto/client.dto';
 
 /**
  * Client management — SUPER_ADMIN only.
@@ -37,7 +45,9 @@ export class AdminClientsController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all clients (token and webhookSecret excluded)' })
+  @ApiOperation({
+    summary: 'List all clients (token and webhookSecret excluded)',
+  })
   list() {
     return this.clients.getAllClients();
   }
@@ -47,15 +57,25 @@ export class AdminClientsController {
   @ApiOperation({ summary: 'Create client — returns token once' })
   async create(@Request() req, @Body() dto: CreateClientDto) {
     const client = await this.clients.createClient(dto);
-    this.audit.writeAsAdmin('client.created', req.adminUser, { clientId: client.id, tenantId: client.tenantId });
+    this.audit.writeAsAdmin('client.created', req.adminUser, {
+      clientId: client.id,
+      tenantId: client.tenantId,
+    });
     return client;
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update client settings' })
-  async update(@Request() req, @Param('id') id: string, @Body() dto: UpdateClientDto) {
+  async update(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: UpdateClientDto,
+  ) {
     const client = await this.clients.updateClient(id, dto);
-    this.audit.writeAsAdmin('client.updated', req.adminUser, { clientId: id, tenantId: client.tenantId });
+    this.audit.writeAsAdmin('client.updated', req.adminUser, {
+      clientId: id,
+      tenantId: client.tenantId,
+    });
     return client;
   }
 
@@ -64,7 +84,10 @@ export class AdminClientsController {
   @ApiOperation({ summary: 'Revoke client — blocks all API access' })
   async revoke(@Request() req, @Param('id') id: string) {
     const client = await this.clients.revokeClient(id);
-    this.audit.writeAsAdmin('client.revoked', req.adminUser, { clientId: id, tenantId: client.tenantId });
+    this.audit.writeAsAdmin('client.revoked', req.adminUser, {
+      clientId: id,
+      tenantId: client.tenantId,
+    });
     return client;
   }
 
@@ -73,7 +96,10 @@ export class AdminClientsController {
   @ApiOperation({ summary: 'Reactivate a revoked client' })
   async reactivate(@Request() req, @Param('id') id: string) {
     const client = await this.clients.reactivateClient(id);
-    this.audit.writeAsAdmin('client.reactivated', req.adminUser, { clientId: id, tenantId: client.tenantId });
+    this.audit.writeAsAdmin('client.reactivated', req.adminUser, {
+      clientId: id,
+      tenantId: client.tenantId,
+    });
     return client;
   }
 
@@ -83,24 +109,40 @@ export class AdminClientsController {
   async regenerateToken(@Request() req, @Param('id') id: string) {
     const result = await this.clients.regenerateToken(id);
     // Never log the token itself.
-    this.audit.writeAsAdmin('client.token_regenerated', req.adminUser, { clientId: id });
+    this.audit.writeAsAdmin('client.token_regenerated', req.adminUser, {
+      clientId: id,
+    });
     return result;
   }
 
   @Post(':id/webhook-secret')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Regenerate webhook HMAC secret — use to verify X-Webhook-Signature header' })
+  @ApiOperation({
+    summary:
+      'Regenerate webhook HMAC secret — use to verify X-Webhook-Signature header',
+  })
   async regenerateWebhookSecret(@Request() req, @Param('id') id: string) {
     const result = await this.clients.regenerateWebhookSecret(id);
     // Never log the secret itself.
-    this.audit.writeAsAdmin('client.webhook_secret_regenerated', req.adminUser, { clientId: id });
+    this.audit.writeAsAdmin(
+      'client.webhook_secret_regenerated',
+      req.adminUser,
+      { clientId: id },
+    );
     return result;
   }
 
   @Get(':id/webhook-deliveries')
   @ApiOperation({ summary: 'List webhook delivery attempts for debugging' })
-  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'DELIVERED', 'FAILED'] })
-  getWebhookDeliveries(@Param('id') id: string, @Query('status') status?: string) {
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['PENDING', 'DELIVERED', 'FAILED'],
+  })
+  getWebhookDeliveries(
+    @Param('id') id: string,
+    @Query('status') status?: string,
+  ) {
     return this.clients.getWebhookDeliveries(id, status);
   }
 }

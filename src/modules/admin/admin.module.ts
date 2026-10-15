@@ -19,7 +19,13 @@ import { AdminPeopleService } from './people/admin-people.service';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 
 @Module({
-  imports: [EventModule, CategoryModule, TagModule, ClientModule, WebhookModule],
+  imports: [
+    EventModule,
+    CategoryModule,
+    TagModule,
+    ClientModule,
+    WebhookModule,
+  ],
   controllers: [
     AdminEventsController,
     AdminParticipantsController,

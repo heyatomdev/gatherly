@@ -28,7 +28,11 @@ import { PaginatedResult, paginate } from '@heyatom/nest-common';
  * Statuses that take a seat against maxParticipants. ATTENDED counts: a
  * checked-in participant is still in the room, so check-in must not free a seat.
  */
-const ACTIVE_STATUSES: ('REGISTERED' | 'CONFIRMED' | 'ATTENDED')[] = ['REGISTERED', 'CONFIRMED', 'ATTENDED'];
+const ACTIVE_STATUSES: ('REGISTERED' | 'CONFIRMED' | 'ATTENDED')[] = [
+  'REGISTERED',
+  'CONFIRMED',
+  'ATTENDED',
+];
 
 /** Statuses a participant can be checked in from (ATTENDED is an idempotent no-op). */
 const CHECKIN_STATUSES = ['REGISTERED', 'CONFIRMED'];
@@ -43,7 +47,9 @@ type LockedEvent = {
 
 /** Seats taken, instead of loading every participant row. */
 const ACTIVE_COUNT = {
-  _count: { select: { participants: { where: { status: { in: ACTIVE_STATUSES } } } } },
+  _count: {
+    select: { participants: { where: { status: { in: ACTIVE_STATUSES } } } },
+  },
 } as const;
 
 /** Event detail without participants — also the shape webhook payloads are built from. */
@@ -67,32 +73,41 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 const DAY = '([+-]?\\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)';
 const INTS = (n: number) => `[+-]?\\d{1,${n}}(,[+-]?\\d{1,${n}})*`;
 // Strict per-part grammar: rrule happily accepts junk like INTERVAL=abc and then loops forever.
-const RRULE_PARTS = new Map<string, RegExp>(Object.entries({
-  FREQ: /^(DAILY|WEEKLY|MONTHLY|YEARLY)$/,
-  INTERVAL: /^[1-9]\d{0,2}$/,
-  COUNT: /^[1-9]\d{0,2}$/,
-  UNTIL: /^\d{8}(T\d{6}Z?)?$/,
-  BYDAY: new RegExp(`^${DAY}(,${DAY})*$`),
-  BYMONTH: new RegExp(`^${INTS(2)}$`),
-  BYMONTHDAY: new RegExp(`^${INTS(2)}$`),
-  BYSETPOS: new RegExp(`^${INTS(3)}$`),
-  WKST: /^(MO|TU|WE|TH|FR|SA|SU)$/,
-}));
+const RRULE_PARTS = new Map<string, RegExp>(
+  Object.entries({
+    FREQ: /^(DAILY|WEEKLY|MONTHLY|YEARLY)$/,
+    INTERVAL: /^[1-9]\d{0,2}$/,
+    COUNT: /^[1-9]\d{0,2}$/,
+    UNTIL: /^\d{8}(T\d{6}Z?)?$/,
+    BYDAY: new RegExp(`^${DAY}(,${DAY})*$`),
+    BYMONTH: new RegExp(`^${INTS(2)}$`),
+    BYMONTHDAY: new RegExp(`^${INTS(2)}$`),
+    BYSETPOS: new RegExp(`^${INTS(3)}$`),
+    WKST: /^(MO|TU|WE|TH|FR|SA|SU)$/,
+  }),
+);
 const RECURRENCE_WINDOW_MS = 2 * 365 * 24 * 60 * 60 * 1000;
 
 /** Validates an RRULE string and returns its options. Throws 400 on anything unexpected. */
 export function parseRecurrenceRule(rule: string): Partial<RRuleOptions> {
-  const body = rule.trim().toUpperCase().replace(/^RRULE:/, '');
+  const body = rule
+    .trim()
+    .toUpperCase()
+    .replace(/^RRULE:/, '');
   const parts = body.split(';');
   const keys = parts.map((part) => {
     const [key, value, ...rest] = part.split('=');
     if (rest.length || !RRULE_PARTS.get(key)?.test(value ?? '')) {
-      throw new BadRequestException(`Invalid recurrenceRule part: ${part.slice(0, 50)}`);
+      throw new BadRequestException(
+        `Invalid recurrenceRule part: ${part.slice(0, 50)}`,
+      );
     }
     return key;
   });
   if (!keys.includes('FREQ') || new Set(keys).size !== keys.length) {
-    throw new BadRequestException('recurrenceRule needs exactly one FREQ and no repeated parts');
+    throw new BadRequestException(
+      'recurrenceRule needs exactly one FREQ and no repeated parts',
+    );
   }
   try {
     const options = RRule.parseString(body);
@@ -120,17 +135,28 @@ export class EventService {
   ) {}
 
   /** Fire-and-forget: a webhook failure never breaks the main operation. */
-  private emit(clientId: string, type: WebhookEventType, items: any, extra?: Record<string, unknown>) {
+  private emit(
+    clientId: string,
+    type: WebhookEventType,
+    items: any,
+    extra?: Record<string, unknown>,
+  ) {
     this.webhook
       .notify(clientId, type, items, extra)
-      .catch((err) => this.logger.warn(`webhook ${type} enqueue failed: ${err?.message}`));
+      .catch((err) =>
+        this.logger.warn(`webhook ${type} enqueue failed: ${err?.message}`),
+      );
   }
 
   /**
    * Locks the event row for the rest of the transaction, so concurrent
    * capacity checks on the same event serialize instead of overbooking.
    */
-  private async lockEvent(tx: Prisma.TransactionClient, eventId: string, clientId: string) {
+  private async lockEvent(
+    tx: Prisma.TransactionClient,
+    eventId: string,
+    clientId: string,
+  ) {
     const [event] = await tx.$queryRaw<LockedEvent[]>`
       SELECT id, status, "startTime", "endTime", "maxParticipants" FROM events
        WHERE id = ${eventId} AND "clientId" = ${clientId}
@@ -146,15 +172,23 @@ export class EventService {
    */
   private assertAcceptsRegistrations(event: LockedEvent) {
     if (event.status !== 'PUBLISHED') {
-      throw new ConflictException({ code: 'REGISTRATION_CLOSED', message: `Event is ${event.status}, not open for registration` });
+      throw new ConflictException({
+        code: 'REGISTRATION_CLOSED',
+        message: `Event is ${event.status}, not open for registration`,
+      });
     }
     if ((event.endTime ?? event.startTime) <= new Date()) {
-      throw new ConflictException({ code: 'REGISTRATION_CLOSED', message: 'Event has already ended, not open for registration' });
+      throw new ConflictException({
+        code: 'REGISTRATION_CLOSED',
+        message: 'Event has already ended, not open for registration',
+      });
     }
   }
 
   private countActive(tx: Prisma.TransactionClient, eventId: string) {
-    return tx.participant.count({ where: { eventId, status: { in: ACTIVE_STATUSES } } });
+    return tx.participant.count({
+      where: { eventId, status: { in: ACTIVE_STATUSES } },
+    });
   }
 
   private async assertCategory(clientId: string, categoryId?: string | null) {
@@ -177,7 +211,9 @@ export class EventService {
 
   private assertTransition(from: string, to: string) {
     if (!VALID_TRANSITIONS[from]?.includes(to)) {
-      throw new BadRequestException(`Cannot transition event from ${from} to ${to}`);
+      throw new BadRequestException(
+        `Cannot transition event from ${from} to ${to}`,
+      );
     }
   }
 
@@ -191,7 +227,9 @@ export class EventService {
         const rule = await tx.recurrenceRule.create({
           data: {
             rule: data.recurrenceRule,
-            endDate: data.recurrenceEndDate ? new Date(data.recurrenceEndDate) : undefined,
+            endDate: data.recurrenceEndDate
+              ? new Date(data.recurrenceEndDate)
+              : undefined,
             count: data.recurrenceCount,
           },
         });
@@ -203,7 +241,8 @@ export class EventService {
       const created = await tx.event.create({
         data: {
           clientId,
-          defaultLocale: data.defaultLocale ?? data.translations[0]?.locale ?? 'it',
+          defaultLocale:
+            data.defaultLocale ?? data.translations[0]?.locale ?? 'it',
           authorId: data.authorId,
           authorName: data.authorName,
           authorEmail: data.authorEmail,
@@ -232,13 +271,18 @@ export class EventService {
       return created;
     });
 
-    this.audit.write('event.created', { metadata: { eventId: event.id, clientId } });
+    this.audit.write('event.created', {
+      metadata: { eventId: event.id, clientId },
+    });
     this.emit(clientId, WebhookEventType.EVENT_CREATED, event);
 
     return event;
   }
 
-  private async generateRecurringInstances(tx: Prisma.TransactionClient, parentEvent: any) {
+  private async generateRecurringInstances(
+    tx: Prisma.TransactionClient,
+    parentEvent: any,
+  ) {
     const rule = parentEvent.recurrenceRule;
     if (!rule) return;
 
@@ -248,10 +292,15 @@ export class EventService {
       .setZone(tz)
       .toJSDate();
 
-    const rrule = new RRule({ ...parseRecurrenceRule(rule.rule), dtstart, tzid: tz });
+    const rrule = new RRule({
+      ...parseRecurrenceRule(rule.rule),
+      dtstart,
+      tzid: tz,
+    });
     const maxOccurrences = rule.count ?? 52;
     const windowEnd = new Date(dtstart.getTime() + RECURRENCE_WINDOW_MS);
-    const until = rule.endDate && rule.endDate < windowEnd ? rule.endDate : windowEnd;
+    const until =
+      rule.endDate && rule.endDate < windowEnd ? rule.endDate : windowEnd;
 
     const occurrences = rrule
       .between(dtstart, until, true, (_, i) => i < maxOccurrences)
@@ -267,51 +316,53 @@ export class EventService {
     const eventIds = futureOccurrences.map(() => randomUUID());
 
     await tx.event.createMany({
-        data: futureOccurrences.map((occurrence, i) => ({
-          id: eventIds[i],
-          clientId: parentEvent.clientId,
-          defaultLocale: parentEvent.defaultLocale,
-          authorId: parentEvent.authorId,
-          authorName: parentEvent.authorName,
-          authorEmail: parentEvent.authorEmail,
-          startTime: occurrence,
-          endTime: duration ? new Date(occurrence.getTime() + duration) : undefined,
-          timezone: tz,
-          status: parentEvent.status,
-          type: parentEvent.type,
-          coverImageUrl: parentEvent.coverImageUrl,
-          categoryId: parentEvent.categoryId,
-          locationName: parentEvent.locationName,
-          locationAddress: parentEvent.locationAddress,
-          locationUrl: parentEvent.locationUrl,
-          isOnline: parentEvent.isOnline,
-          maxParticipants: parentEvent.maxParticipants,
-          isPublic: parentEvent.isPublic,
-          price: parentEvent.price,
-          currency: parentEvent.currency,
-          parentEventId: parentEvent.id,
-          recurrenceRuleId: parentEvent.recurrenceRuleId,
-        })),
-      });
+      data: futureOccurrences.map((occurrence, i) => ({
+        id: eventIds[i],
+        clientId: parentEvent.clientId,
+        defaultLocale: parentEvent.defaultLocale,
+        authorId: parentEvent.authorId,
+        authorName: parentEvent.authorName,
+        authorEmail: parentEvent.authorEmail,
+        startTime: occurrence,
+        endTime: duration
+          ? new Date(occurrence.getTime() + duration)
+          : undefined,
+        timezone: tz,
+        status: parentEvent.status,
+        type: parentEvent.type,
+        coverImageUrl: parentEvent.coverImageUrl,
+        categoryId: parentEvent.categoryId,
+        locationName: parentEvent.locationName,
+        locationAddress: parentEvent.locationAddress,
+        locationUrl: parentEvent.locationUrl,
+        isOnline: parentEvent.isOnline,
+        maxParticipants: parentEvent.maxParticipants,
+        isPublic: parentEvent.isPublic,
+        price: parentEvent.price,
+        currency: parentEvent.currency,
+        parentEventId: parentEvent.id,
+        recurrenceRuleId: parentEvent.recurrenceRuleId,
+      })),
+    });
 
-      const translationData = eventIds.flatMap((eventId) =>
-        parentEvent.translations.map((t: any) => ({
-          eventId,
-          locale: t.locale,
-          title: t.title,
-          description: t.description ?? null,
-        })),
-      );
-      if (translationData.length) {
-        await tx.eventTranslation.createMany({ data: translationData });
-      }
+    const translationData = eventIds.flatMap((eventId) =>
+      parentEvent.translations.map((t: any) => ({
+        eventId,
+        locale: t.locale,
+        title: t.title,
+        description: t.description ?? null,
+      })),
+    );
+    if (translationData.length) {
+      await tx.eventTranslation.createMany({ data: translationData });
+    }
 
-      const tagData = eventIds.flatMap((eventId) =>
-        parentEvent.tags.map((et: any) => ({ eventId, tagId: et.tagId })),
-      );
-      if (tagData.length) {
-        await tx.eventTag.createMany({ data: tagData });
-      }
+    const tagData = eventIds.flatMap((eventId) =>
+      parentEvent.tags.map((et: any) => ({ eventId, tagId: et.tagId })),
+    );
+    if (tagData.length) {
+      await tx.eventTag.createMany({ data: tagData });
+    }
   }
 
   async getEventsByClient(
@@ -377,7 +428,12 @@ export class EventService {
       for (const t of translations ?? []) {
         await tx.eventTranslation.upsert({
           where: { eventId_locale: { eventId, locale: t.locale } },
-          create: { eventId, locale: t.locale, title: t.title, description: t.description },
+          create: {
+            eventId,
+            locale: t.locale,
+            title: t.title,
+            description: t.description,
+          },
           update: { title: t.title, description: t.description },
         });
       }
@@ -386,7 +442,9 @@ export class EventService {
         const tagIds = await this.resolveTagSlugs(tx, clientId, tagSlugs);
         await tx.eventTag.deleteMany({ where: { eventId } });
         if (tagIds.length) {
-          await tx.eventTag.createMany({ data: tagIds.map((tagId) => ({ eventId, tagId })) });
+          await tx.eventTag.createMany({
+            data: tagIds.map((tagId) => ({ eventId, tagId })),
+          });
         }
       }
 
@@ -394,8 +452,12 @@ export class EventService {
         where: { id: eventId },
         data: {
           ...scalarData,
-          startTime: scalarData.startTime ? new Date(scalarData.startTime) : undefined,
-          endTime: scalarData.endTime ? new Date(scalarData.endTime) : undefined,
+          startTime: scalarData.startTime
+            ? new Date(scalarData.startTime)
+            : undefined,
+          endTime: scalarData.endTime
+            ? new Date(scalarData.endTime)
+            : undefined,
         },
         include: EVENT_INCLUDE,
       });
@@ -404,7 +466,8 @@ export class EventService {
       const raised =
         scalarData.maxParticipants !== undefined &&
         locked.maxParticipants != null &&
-        (event.maxParticipants == null || event.maxParticipants > locked.maxParticipants);
+        (event.maxParticipants == null ||
+          event.maxParticipants > locked.maxParticipants);
       const promoted = raised
         ? await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants)
         : [];
@@ -417,7 +480,10 @@ export class EventService {
   }
 
   async cancelEvent(eventId: string, clientId: string) {
-    this.assertTransition(await this.findStatus(eventId, clientId), 'CANCELLED');
+    this.assertTransition(
+      await this.findStatus(eventId, clientId),
+      'CANCELLED',
+    );
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const event = await tx.event.update({
@@ -445,17 +511,25 @@ export class EventService {
   async publishEvent(eventId: string, clientId: string) {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, clientId },
-      select: { status: true, startTime: true, translations: { select: { title: true } } },
+      select: {
+        status: true,
+        startTime: true,
+        translations: { select: { title: true } },
+      },
     });
     if (!event) throw new NotFoundException('Event not found');
 
     this.assertTransition(event.status, 'PUBLISHED');
 
     if (!event.translations.length || !event.translations[0].title?.trim()) {
-      throw new BadRequestException('Event must have at least one translation with a title');
+      throw new BadRequestException(
+        'Event must have at least one translation with a title',
+      );
     }
     if (event.startTime <= new Date()) {
-      throw new BadRequestException('Cannot publish an event with a start time in the past');
+      throw new BadRequestException(
+        'Cannot publish an event with a start time in the past',
+      );
     }
 
     const published = await this.prisma.event.update({
@@ -483,20 +557,31 @@ export class EventService {
     });
     if (!event) throw new NotFoundException('Event not found');
     if (event.status !== 'DRAFT') {
-      throw new ConflictException(`Event is ${event.status}, only DRAFT events can be deleted — cancel it instead`);
+      throw new ConflictException(
+        `Event is ${event.status}, only DRAFT events can be deleted — cancel it instead`,
+      );
     }
 
     await this.prisma.$transaction(async (tx) => {
-      const live = await tx.event.count({ where: { parentEventId: eventId, status: { not: 'DRAFT' } } });
-      if (live) throw new ConflictException(`${live} occurrence(s) of this series are past DRAFT — cancel them first`);
+      const live = await tx.event.count({
+        where: { parentEventId: eventId, status: { not: 'DRAFT' } },
+      });
+      if (live)
+        throw new ConflictException(
+          `${live} occurrence(s) of this series are past DRAFT — cancel them first`,
+        );
 
       // `status` in the filter: a publish that landed after the read above wins.
-      const { count } = await tx.event.deleteMany({ where: { id: eventId, clientId, status: 'DRAFT' } });
+      const { count } = await tx.event.deleteMany({
+        where: { id: eventId, clientId, status: 'DRAFT' },
+      });
       if (!count) throw new ConflictException('Event is no longer a DRAFT');
 
       // Occurrences share the parent's rule; only the series root owns it.
       if (event.recurrenceRuleId && !event.parentEventId) {
-        await tx.recurrenceRule.deleteMany({ where: { id: event.recurrenceRuleId } });
+        await tx.recurrenceRule.deleteMany({
+          where: { id: event.recurrenceRuleId },
+        });
       }
     });
 
@@ -505,7 +590,10 @@ export class EventService {
   }
 
   async completeEvent(eventId: string, clientId: string) {
-    this.assertTransition(await this.findStatus(eventId, clientId), 'COMPLETED');
+    this.assertTransition(
+      await this.findStatus(eventId, clientId),
+      'COMPLETED',
+    );
 
     const completed = await this.prisma.event.update({
       where: { id: eventId },
@@ -552,7 +640,11 @@ export class EventService {
     return paginate(data, total, query);
   }
 
-  async addParticipant(eventId: string, clientId: string, data: AddParticipantDto) {
+  async addParticipant(
+    eventId: string,
+    clientId: string,
+    data: AddParticipantDto,
+  ) {
     try {
       const participant = await this.prisma.$transaction(async (tx) => {
         const event = await this.lockEvent(tx, eventId, clientId);
@@ -585,7 +677,10 @@ export class EventService {
       return participant;
     } catch (error: any) {
       if (error.code === 'P2002') {
-        throw new ConflictException({ code: 'ALREADY_REGISTERED', message: 'Participant already registered for this event' });
+        throw new ConflictException({
+          code: 'ALREADY_REGISTERED',
+          message: 'Participant already registered for this event',
+        });
       }
       throw error;
     }
@@ -595,8 +690,18 @@ export class EventService {
     eventId: string,
     clientId: string,
     data: BulkAddParticipantsDto,
-  ): Promise<{ added: number; waitlisted: number; skipped: number; errors: Array<{ index: number; reason: string }> }> {
-    const result = { added: 0, waitlisted: 0, skipped: 0, errors: [] as Array<{ index: number; reason: string }> };
+  ): Promise<{
+    added: number;
+    waitlisted: number;
+    skipped: number;
+    errors: Array<{ index: number; reason: string }>;
+  }> {
+    const result = {
+      added: 0,
+      waitlisted: 0,
+      skipped: 0,
+      errors: [] as Array<{ index: number; reason: string }>,
+    };
 
     const created = await this.prisma.$transaction(async (tx) => {
       const event = await this.lockEvent(tx, eventId, clientId);
@@ -615,7 +720,9 @@ export class EventService {
             select: { externalId: true, externalSource: true },
           })
         : [];
-      const taken = new Set(existing.map((p) => key(p.externalId!, p.externalSource!)));
+      const taken = new Set(
+        existing.map((p) => key(p.externalId!, p.externalSource!)),
+      );
 
       const rows: Prisma.ParticipantCreateManyInput[] = [];
       data.participants.forEach((p, index) => {
@@ -629,9 +736,13 @@ export class EventService {
           taken.add(k);
         }
 
-        const full = event.maxParticipants != null && activeCount >= event.maxParticipants;
+        const full =
+          event.maxParticipants != null && activeCount >= event.maxParticipants;
         if (full) result.waitlisted++;
-        else { result.added++; activeCount++; }
+        else {
+          result.added++;
+          activeCount++;
+        }
 
         rows.push({
           eventId,
@@ -647,32 +758,47 @@ export class EventService {
         });
       });
 
-      return rows.length ? tx.participant.createManyAndReturn({ data: rows }) : [];
+      return rows.length
+        ? tx.participant.createManyAndReturn({ data: rows })
+        : [];
     });
 
     this.emit(clientId, WebhookEventType.PARTICIPANT_JOINED, created);
     return result;
   }
 
-  async removeParticipant(eventId: string, clientId: string, participantId: string) {
-    const { participant, promoted } = await this.prisma.$transaction(async (tx) => {
-      const event = await this.lockEvent(tx, eventId, clientId);
+  async removeParticipant(
+    eventId: string,
+    clientId: string,
+    participantId: string,
+  ) {
+    const { participant, promoted } = await this.prisma.$transaction(
+      async (tx) => {
+        const event = await this.lockEvent(tx, eventId, clientId);
 
-      const existing = await tx.participant.findFirst({
-        where: { id: participantId, eventId },
-        select: { id: true },
-      });
-      if (!existing) throw new NotFoundException('Participant not found');
+        const existing = await tx.participant.findFirst({
+          where: { id: participantId, eventId },
+          select: { id: true },
+        });
+        if (!existing) throw new NotFoundException('Participant not found');
 
-      const participant = await tx.participant.update({
-        where: { id: participantId },
-        data: { status: 'CANCELLED' },
-      });
-      const promoted = await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants, 1);
-      return { participant, promoted };
+        const participant = await tx.participant.update({
+          where: { id: participantId },
+          data: { status: 'CANCELLED' },
+        });
+        const promoted = await this.promoteFromWaitlistTx(
+          tx,
+          eventId,
+          event.maxParticipants,
+          1,
+        );
+        return { participant, promoted };
+      },
+    );
+
+    this.audit.write('participant.removed', {
+      metadata: { eventId, clientId, participantId },
     });
-
-    this.audit.write('participant.removed', { metadata: { eventId, clientId, participantId } });
     this.emit(clientId, WebhookEventType.PARTICIPANT_REMOVED, participant);
     this.emitPromoted(clientId, promoted);
   }
@@ -683,38 +809,51 @@ export class EventService {
     clientId: string,
     status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED',
   ) {
-    const { result, previousStatus, promoted } = await this.prisma.$transaction(async (tx) => {
-      const event = await this.lockEvent(tx, eventId, clientId);
+    const { result, previousStatus, promoted } = await this.prisma.$transaction(
+      async (tx) => {
+        const event = await this.lockEvent(tx, eventId, clientId);
 
-      const participant = await tx.participant.findFirst({
-        where: { id: participantId, eventId },
-        select: { status: true },
-      });
-      if (!participant) throw new NotFoundException('Participant not found');
+        const participant = await tx.participant.findFirst({
+          where: { id: participantId, eventId },
+          select: { status: true },
+        });
+        if (!participant) throw new NotFoundException('Participant not found');
 
-      const isActive = (s: string) => (ACTIVE_STATUSES as string[]).includes(s);
-      if (
-        isActive(status) &&
-        !isActive(participant.status) &&
-        event.maxParticipants != null &&
-        (await this.countActive(tx, eventId)) >= event.maxParticipants
-      ) {
-        throw new ConflictException({ code: 'EVENT_FULL', message: 'Event is full' });
-      }
+        const isActive = (s: string) =>
+          (ACTIVE_STATUSES as string[]).includes(s);
+        if (
+          isActive(status) &&
+          !isActive(participant.status) &&
+          event.maxParticipants != null &&
+          (await this.countActive(tx, eventId)) >= event.maxParticipants
+        ) {
+          throw new ConflictException({
+            code: 'EVENT_FULL',
+            message: 'Event is full',
+          });
+        }
 
-      const result = await tx.participant.update({
-        where: { id: participantId },
-        data: { status },
-      });
-      const promoted =
-        status === 'CANCELLED'
-          ? await this.promoteFromWaitlistTx(tx, eventId, event.maxParticipants, 1)
-          : [];
-      return { result, previousStatus: participant.status, promoted };
-    });
+        const result = await tx.participant.update({
+          where: { id: participantId },
+          data: { status },
+        });
+        const promoted =
+          status === 'CANCELLED'
+            ? await this.promoteFromWaitlistTx(
+                tx,
+                eventId,
+                event.maxParticipants,
+                1,
+              )
+            : [];
+        return { result, previousStatus: participant.status, promoted };
+      },
+    );
 
     if (previousStatus !== status) {
-      this.emit(clientId, WebhookEventType.PARTICIPANT_STATUS_CHANGED, result, { previousStatus });
+      this.emit(clientId, WebhookEventType.PARTICIPANT_STATUS_CHANGED, result, {
+        previousStatus,
+      });
     }
     this.emitPromoted(clientId, promoted);
     return result;
@@ -725,30 +864,48 @@ export class EventService {
    * webhook); WAITLIST/CANCELLED are refused — they hold no seat, and checking
    * them in would put someone in the room past maxParticipants.
    */
-  async checkInParticipant(participantId: string, eventId: string, clientId: string) {
-    const { participant, changed } = await this.prisma.$transaction(async (tx) => {
-      await this.lockEvent(tx, eventId, clientId);
+  async checkInParticipant(
+    participantId: string,
+    eventId: string,
+    clientId: string,
+  ) {
+    const { participant, changed } = await this.prisma.$transaction(
+      async (tx) => {
+        await this.lockEvent(tx, eventId, clientId);
 
-      const existing = await tx.participant.findFirst({ where: { id: participantId, eventId } });
-      if (!existing) throw new NotFoundException('Participant not found');
-      if (existing.status === 'ATTENDED') return { participant: existing, changed: false };
-      if (!CHECKIN_STATUSES.includes(existing.status)) {
-        throw new ConflictException(`Cannot check in a participant with status ${existing.status}`);
-      }
+        const existing = await tx.participant.findFirst({
+          where: { id: participantId, eventId },
+        });
+        if (!existing) throw new NotFoundException('Participant not found');
+        if (existing.status === 'ATTENDED')
+          return { participant: existing, changed: false };
+        if (!CHECKIN_STATUSES.includes(existing.status)) {
+          throw new ConflictException(
+            `Cannot check in a participant with status ${existing.status}`,
+          );
+        }
 
-      const participant = await tx.participant.update({
-        where: { id: participantId },
-        data: { checkedIn: true, checkedInAt: new Date(), status: 'ATTENDED' },
-      });
-      return { participant, changed: true };
-    });
+        const participant = await tx.participant.update({
+          where: { id: participantId },
+          data: {
+            checkedIn: true,
+            checkedInAt: new Date(),
+            status: 'ATTENDED',
+          },
+        });
+        return { participant, changed: true };
+      },
+    );
 
-    if (changed) this.emit(clientId, WebhookEventType.PARTICIPANT_CHECKED_IN, participant);
+    if (changed)
+      this.emit(clientId, WebhookEventType.PARTICIPANT_CHECKED_IN, participant);
     return participant;
   }
 
   async getEventStats(eventId: string, clientId: string) {
-    const event = await this.prisma.event.findFirst({ where: { id: eventId, clientId } });
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, clientId },
+    });
     if (!event) throw new NotFoundException('Event not found');
 
     const [byStatus, checkedIn] = await Promise.all([
@@ -860,8 +1017,12 @@ export class EventService {
 
   @Cron(CronExpression.EVERY_HOUR)
   async cleanupExpiredIdempotencyKeys() {
-    await this.prisma.withAdvisoryLock('events.cleanupExpiredIdempotencyKeys', (tx) =>
-      tx.idempotencyKey.deleteMany({ where: { expiresAt: { lt: new Date() } } }),
+    await this.prisma.withAdvisoryLock(
+      'events.cleanupExpiredIdempotencyKeys',
+      (tx) =>
+        tx.idempotencyKey.deleteMany({
+          where: { expiresAt: { lt: new Date() } },
+        }),
     );
   }
 }

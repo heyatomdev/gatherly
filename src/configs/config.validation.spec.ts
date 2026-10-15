@@ -13,17 +13,28 @@ describe('config validation — ENABLE_SWAGGER', () => {
     ['production', 'false'],
     ['development', 'true'],
     ['test', 'true'],
-  ])('defaults from an explicit NODE_ENV only (%s → %s)', (nodeEnv, expected) => {
-    const env = nodeEnv ? { ...base, NODE_ENV: nodeEnv } : base;
-    expect(validate(env).ENABLE_SWAGGER).toBe(expected);
-  });
+  ])(
+    'defaults from an explicit NODE_ENV only (%s → %s)',
+    (nodeEnv, expected) => {
+      const env = nodeEnv ? { ...base, NODE_ENV: nodeEnv } : base;
+      expect(validate(env).ENABLE_SWAGGER).toBe(expected);
+    },
+  );
 
   it('honours an explicit value', () => {
-    expect(validate({ ...base, NODE_ENV: 'production', ENABLE_SWAGGER: 'true' }).ENABLE_SWAGGER).toBe('true');
-    expect(validate({ ...base, NODE_ENV: 'development', ENABLE_SWAGGER: 'false' }).ENABLE_SWAGGER).toBe('false');
+    expect(
+      validate({ ...base, NODE_ENV: 'production', ENABLE_SWAGGER: 'true' })
+        .ENABLE_SWAGGER,
+    ).toBe('true');
+    expect(
+      validate({ ...base, NODE_ENV: 'development', ENABLE_SWAGGER: 'false' })
+        .ENABLE_SWAGGER,
+    ).toBe('false');
   });
 
   it('rejects anything but true/false', () => {
-    expect(() => validate({ ...base, ENABLE_SWAGGER: 'yes' })).toThrow(/ENABLE_SWAGGER/);
+    expect(() => validate({ ...base, ENABLE_SWAGGER: 'yes' })).toThrow(
+      /ENABLE_SWAGGER/,
+    );
   });
 });

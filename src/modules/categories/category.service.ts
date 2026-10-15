@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateCategoryDto, UpdateCategoryDto, CategoryResponseDto } from './dto/category.dto';
+import {
+  CreateCategoryDto,
+  UpdateCategoryDto,
+  CategoryResponseDto,
+} from './dto/category.dto';
 
 const CATEGORY_INCLUDE = {
   translations: true,
@@ -11,7 +15,10 @@ const CATEGORY_INCLUDE = {
 export class CategoryService {
   constructor(private prisma: PrismaService) {}
 
-  async createCategory(clientId: string, data: CreateCategoryDto): Promise<CategoryResponseDto> {
+  async createCategory(
+    clientId: string,
+    data: CreateCategoryDto,
+  ): Promise<CategoryResponseDto> {
     return this.prisma.eventCategory.create({
       data: {
         clientId,
@@ -23,14 +30,19 @@ export class CategoryService {
     }) as any;
   }
 
-  async getCategoriesByClient(clientId: string): Promise<CategoryResponseDto[]> {
+  async getCategoriesByClient(
+    clientId: string,
+  ): Promise<CategoryResponseDto[]> {
     return this.prisma.eventCategory.findMany({
       where: { clientId },
       include: CATEGORY_INCLUDE,
     }) as any;
   }
 
-  async getCategoryById(categoryId: string, clientId: string): Promise<CategoryResponseDto> {
+  async getCategoryById(
+    categoryId: string,
+    clientId: string,
+  ): Promise<CategoryResponseDto> {
     const category = await this.prisma.eventCategory.findFirst({
       where: { id: categoryId, clientId },
       include: CATEGORY_INCLUDE,

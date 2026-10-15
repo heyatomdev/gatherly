@@ -92,7 +92,10 @@ export class CreateEventDto {
   @IsUrl()
   coverImageUrl?: string;
 
-  @ApiPropertyOptional({ type: [String], description: 'Tag slugs — created if not exist' })
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Tag slugs — created if not exist',
+  })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
@@ -149,7 +152,9 @@ export class CreateEventDto {
   @IsString()
   currency?: string;
 
-  @ApiPropertyOptional({ description: 'iCal RRULE string e.g. FREQ=WEEKLY;BYDAY=MO' })
+  @ApiPropertyOptional({
+    description: 'iCal RRULE string e.g. FREQ=WEEKLY;BYDAY=MO',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)
@@ -239,7 +244,10 @@ export class UpdateEventDto {
   @IsBoolean()
   isOnline?: boolean;
 
-  @ApiPropertyOptional({ nullable: true, description: 'null removes the cap (promotes the whole waitlist)' })
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'null removes the cap (promotes the whole waitlist)',
+  })
   @IsOptional()
   @IsNumber()
   @Min(1)
@@ -284,7 +292,9 @@ export class AddParticipantDto {
   @IsString()
   externalId?: string;
 
-  @ApiPropertyOptional({ description: 'Source identifier e.g. "discord", "steam"' })
+  @ApiPropertyOptional({
+    description: 'Source identifier e.g. "discord", "steam"',
+  })
   @IsOptional()
   @IsString()
   externalSource?: string;
@@ -300,20 +310,26 @@ export class AddParticipantDto {
   @MaxLength(1000)
   notes?: string;
 
-  @ApiPropertyOptional({ description: 'Domain-specific data e.g. {team: "RedTeam", rank: 3}' })
+  @ApiPropertyOptional({
+    description: 'Domain-specific data e.g. {team: "RedTeam", rank: 3}',
+  })
   @IsOptional()
   @IsObject()
   metadata?: Record<string, any>;
 }
 
 export class UpdateParticipantStatusDto {
-  @ApiProperty({ enum: ['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'] })
+  @ApiProperty({
+    enum: ['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'],
+  })
   @IsEnum(['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'])
   status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
 }
 
 export class GetEventsQueryDto extends PageParams {
-  @ApiPropertyOptional({ enum: ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'] })
+  @ApiPropertyOptional({
+    enum: ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'],
+  })
   @IsOptional()
   @IsEnum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'])
   status?: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
@@ -335,7 +351,9 @@ export class GetEventsQueryDto extends PageParams {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : undefined))
+  @Transform(({ value }) =>
+    value === 'true' ? true : value === 'false' ? false : undefined,
+  )
   @IsBoolean()
   isOnline?: boolean;
 
@@ -351,7 +369,9 @@ export class GetEventsQueryDto extends PageParams {
 }
 
 export class GetParticipantsQueryDto extends PageParams {
-  @ApiPropertyOptional({ enum: ['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'] })
+  @ApiPropertyOptional({
+    enum: ['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'],
+  })
   @IsOptional()
   @IsEnum(['REGISTERED', 'WAITLIST', 'CONFIRMED', 'CANCELLED', 'ATTENDED'])
   status?: string;
@@ -373,7 +393,9 @@ export class GetParticipantsQueryDto extends PageParams {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : undefined))
+  @Transform(({ value }) =>
+    value === 'true' ? true : value === 'false' ? false : undefined,
+  )
   @IsBoolean()
   checkedIn?: boolean;
 }
