@@ -506,7 +506,10 @@ describe('EventService', () => {
       const status = label.split(' ')[0];
       lockReturns(null, { status, ...overrides });
 
-      await expect(service.addParticipant(EVENT_ID, CLIENT_ID, dto)).rejects.toThrow(ConflictException);
+      await expect(service.addParticipant(EVENT_ID, CLIENT_ID, dto)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'REGISTRATION_CLOSED' },
+      });
       expect(mockTx.participant.create).not.toHaveBeenCalled();
       expect(mockWebhook.notify).not.toHaveBeenCalled();
     });
@@ -527,9 +530,10 @@ describe('EventService', () => {
       err.code = 'P2002';
       mockTx.participant.create.mockRejectedValue(err);
 
-      await expect(service.addParticipant(EVENT_ID, CLIENT_ID, dto)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(service.addParticipant(EVENT_ID, CLIENT_ID, dto)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'ALREADY_REGISTERED' },
+      });
     });
   });
 
@@ -642,7 +646,7 @@ describe('EventService', () => {
 
       await expect(
         service.updateParticipantStatus(PARTICIPANT_ID, EVENT_ID, CLIENT_ID, 'REGISTERED'),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toMatchObject({ status: 409, response: { code: 'EVENT_FULL' } });
       expect(mockTx.participant.update).not.toHaveBeenCalled();
     });
 

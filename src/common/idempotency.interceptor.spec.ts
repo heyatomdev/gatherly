@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { lastValueFrom, of, throwError } from 'rxjs';
 import { IdempotencyInterceptor, STALE_CLAIM_MS, hashRequestBody } from './idempotency.interceptor';
 
@@ -85,6 +85,9 @@ describe('IdempotencyInterceptor', () => {
     await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).rejects.toThrow(
       ConflictException,
     );
+    await expect(lastValueFrom(interceptor.intercept(ctx('k1').context, handler))).rejects.toMatchObject({
+      response: { code: 'IDEMPOTENCY_IN_PROGRESS' },
+    });
     expect(handler.handle).not.toHaveBeenCalled();
     expect(prisma.idempotencyKey.updateMany).not.toHaveBeenCalled();
   });
@@ -118,7 +121,7 @@ describe('IdempotencyInterceptor', () => {
 
     await expect(
       lastValueFrom(interceptor.intercept(ctx('k1', { userName: 'Luigi' }).context, handler)),
-    ).rejects.toThrow(UnprocessableEntityException);
+    ).rejects.toMatchObject({ status: 422, response: { code: 'IDEMPOTENCY_KEY_REUSED' } });
     expect(handler.handle).not.toHaveBeenCalled();
   });
 

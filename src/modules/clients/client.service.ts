@@ -37,7 +37,7 @@ export class ClientService {
       });
     } catch (error: any) {
       if (error.code === 'P2002') {
-        throw new ConflictException('Tenant già associato a un altro client');
+        throw new ConflictException({ code: 'TENANT_TAKEN', message: 'Tenant già associato a un altro client' });
       }
       throw error;
     }
@@ -67,7 +67,7 @@ export class ClientService {
       });
     } catch (error: any) {
       if (error.code === 'P2002') {
-        throw new ConflictException('Tenant già associato a un altro client');
+        throw new ConflictException({ code: 'TENANT_TAKEN', message: 'Tenant già associato a un altro client' });
       }
       throw error;
     }
@@ -137,7 +137,7 @@ async function assertSafeWebhookUrl(url: string): Promise<void> {
   try {
     await assertPublicWebhookUrl(url);
   } catch (error) {
-    if (error instanceof WebhookUrlError) throw new BadRequestException(error.message);
+    if (error instanceof WebhookUrlError) throw new BadRequestException({ code: error.code, message: error.message });
     throw error;
   }
 }

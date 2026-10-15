@@ -20,8 +20,8 @@ const splitList = (raw?: string): string[] | undefined =>
 import { AdminModule } from '@/modules/admin/admin.module';
 import { validate } from '@/configs/config.validation';
 import { loggerConfig } from '@/configs/logger.config';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { TransformInterceptor } from '@heyatom/nest-common';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AllExceptionsFilter, TransformInterceptor } from '@heyatom/nest-common';
 
 @Module({
     controllers: [],
@@ -80,6 +80,8 @@ import { TransformInterceptor } from '@heyatom/nest-common';
         { provide: APP_GUARD, useClass: BastionJwtGuard },
         // `{ data }` envelope; paginate() results pass through as `{ data, meta }`.
         { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
+        // api.md §3 error body: { statusCode, code, message, errors?, requestId }; Prisma P2002/P2003 → 409, P2025 → 404.
+        { provide: APP_FILTER, useClass: AllExceptionsFilter },
     ],
 })
 

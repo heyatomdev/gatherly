@@ -136,20 +136,21 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
     const existing = await this.prisma.idempotencyKey.findUnique({ where: { key_clientId_path: data } });
     // Row vanished between insert and read (the original request failed and released it).
-    if (!existing) throw new ConflictException('A request with this Idempotency-Key is still in progress');
+    if (!existing) throw new ConflictException({ code: 'IDEMPOTENCY_IN_PROGRESS', message: 'A request with this Idempotency-Key is still in progress' });
 
     const now = Date.now();
     const expired = existing.expiresAt.getTime() <= now;
     if (!expired) {
       // Legacy rows have no hash — nothing to compare.
       if (existing.requestHash && existing.requestHash !== requestHash) {
-        throw new UnprocessableEntityException(
-          'Idempotency-Key was already used with a different request body',
-        );
+        throw new UnprocessableEntityException({
+          code: 'IDEMPOTENCY_KEY_REUSED',
+          message: 'Idempotency-Key was already used with a different request body',
+        });
       }
       if (existing.statusCode !== IN_PROGRESS) return existing;
       if (existing.createdAt.getTime() > now - STALE_CLAIM_MS) {
-        throw new ConflictException('A request with this Idempotency-Key is still in progress');
+        throw new ConflictException({ code: 'IDEMPOTENCY_IN_PROGRESS', message: 'A request with this Idempotency-Key is still in progress' });
       }
     }
 
@@ -159,7 +160,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
       where: { id: existing.id, statusCode: existing.statusCode, createdAt: existing.createdAt },
       data: fresh(),
     });
-    if (count !== 1) throw new ConflictException('A request with this Idempotency-Key is still in progress');
+    if (count !== 1) throw new ConflictException({ code: 'IDEMPOTENCY_IN_PROGRESS', message: 'A request with this Idempotency-Key is still in progress' });
     return null;
   }
 }
