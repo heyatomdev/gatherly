@@ -20,7 +20,8 @@ const splitList = (raw?: string): string[] | undefined =>
 import { AdminModule } from '@/modules/admin/admin.module';
 import { validate } from '@/configs/config.validation';
 import { loggerConfig } from '@/configs/logger.config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { TransformInterceptor } from '@heyatom/nest-common';
 
 @Module({
     controllers: [],
@@ -77,6 +78,8 @@ import { APP_GUARD } from '@nestjs/core';
     providers: [
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: BastionJwtGuard },
+        // `{ data }` envelope; paginate() results pass through as `{ data, meta }`.
+        { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     ],
 })
 

@@ -6,7 +6,6 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
-import { TransformInterceptor } from './interceptors/transform.interceptor';
 
 async function bootstrap() {
 
@@ -42,7 +41,6 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  app.useGlobalInterceptors(new TransformInterceptor());
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('')
