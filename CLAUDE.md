@@ -446,14 +446,19 @@ with a plain `findMany` — that's how double sends happened.
 `title`/`description` in the default locale, tag slugs, no `participants`,
 no `translations` array. Don't send raw `EVENT_INCLUDE` rows (participant PII).
 
-**SSRF guard** (`webhook-url.ts`): `webhookUrl` must be `https`. On save
-(`/admin/settings`, `/admin/clients`) the host is resolved and
-private/loopback/link-local/ULA/metadata/NAT64 addresses → 400. At send time
-the URL is re-checked and the request goes through `webhookAgent`, whose DNS
-lookup refuses private addresses (stored URLs, DNS rebinding). No redirects,
-64KB response cap, 10s total deadline. `lastError` is `HTTP <status>` or
-`Delivery failed` — never the raw socket error. Pre-existing `http://` URLs
-now fail delivery until updated.
+**SSRF guard** — lives in `@heyatom/nest-common/webhooks` (shared with herald
+and bastion; no local copy, fix rules there). `webhookUrl` must be `https`, no
+credentials in the URL. On save (`/admin/settings`, `/admin/clients`, both via
+`ClientService`) `assertPublicWebhookUrl` resolves the host and refuses it
+unless **every** address is public (private/loopback/link-local/ULA/metadata/
+NAT64/`::/96`/`2001:db8::/32`, or no answer) → 400 with the package's
+`WebhookUrlError` message. At send time `checkWebhookUrl` re-checks the stored
+URL — a blocked one goes straight to `FAILED`, no retries — and the request
+goes through the package's `webhookAgent`, whose DNS lookup refuses private
+addresses (DNS rebinding). No redirects, 64KB response cap, 10s total
+deadline. `lastError` is `HTTP <status>` or `Delivery failed` — never the raw
+socket error. Signing is the package's `signStandardWebhook` (byte-identical
+to the old local HMAC).
 
 ---
 

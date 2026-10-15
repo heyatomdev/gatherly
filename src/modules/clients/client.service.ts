@@ -1,8 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
-import { assertSafeWebhookUrl } from '../webhook/webhook-url';
+import { WebhookUrlError, assertPublicWebhookUrl } from '@heyatom/nest-common/webhooks';
 
 const CLIENT_SELECT_SAFE = {
   id: true,
@@ -129,5 +129,15 @@ export class ClientService {
 
   private generateToken(): string {
     return randomBytes(32).toString('hex');
+  }
+}
+
+/** Save-time SSRF check (https, no credentials, every DNS answer public) → 400. */
+async function assertSafeWebhookUrl(url: string): Promise<void> {
+  try {
+    await assertPublicWebhookUrl(url);
+  } catch (error) {
+    if (error instanceof WebhookUrlError) throw new BadRequestException(error.message);
+    throw error;
   }
 }

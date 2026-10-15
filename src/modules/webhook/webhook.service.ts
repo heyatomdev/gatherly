@@ -2,9 +2,9 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { HttpService } from '@nestjs/axios';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHmac, randomUUID } from 'crypto';
+import { checkWebhookUrl, signStandardWebhook, webhookAgent } from '@heyatom/nest-common/webhooks';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { checkWebhookUrl, webhookAgent } from './webhook-url';
 import { formatEventForWebhook, formatParticipantForWebhook } from './webhook.helper';
 import { WebhookEventType } from './dto/webhook-event.dto';
 
@@ -33,14 +33,6 @@ export class WebhookService {
   /** Legacy `X-Webhook-Signature` — body only, no replay protection. Remove after one release. */
   private signPayload(secret: string, body: string): string {
     return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
-  }
-
-  /**
-   * Standard Webhooks `webhook-signature`: HMAC-SHA256 over `${id}.${timestamp}.${body}`.
-   * The key is the client's webhookSecret string as-is (UTF-8), not a `whsec_` base64 key.
-   */
-  private signStandard(secret: string, id: string, timestamp: string, body: string): string {
-    return 'v1,' + createHmac('sha256', secret).update(`${id}.${timestamp}.${body}`).digest('base64');
   }
 
   @Cron('* * * * *')
@@ -101,20 +93,33 @@ export class WebhookService {
         return;
       }
 
-      // Re-checked at send time: URLs stored before validation existed, and DNS can change.
-      checkWebhookUrl(url);
+      // Re-checked at send time: URLs stored before validation existed. Hostnames are
+      // re-resolved by webhookAgent's lookup on every connect (DNS rebinding).
+      try {
+        checkWebhookUrl(url);
+      } catch {
+        // Terminal: retrying a blocked target is the scan itself.
+        await this.prisma.webhookDelivery.update({
+          where: { id: delivery.id },
+          data: { status: 'FAILED', attempts, lastError: 'Delivery failed' },
+        });
+        return;
+      }
       const body = JSON.stringify(delivery.payload);
       // Send time, not enqueue time: the body's `timestamp` is reused on every retry.
-      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const timestamp = Math.floor(Date.now() / 1000);
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'User-Agent': 'Gatherly/1.0 Webhook',
         'webhook-id': delivery.id,
-        'webhook-timestamp': timestamp,
+        'webhook-timestamp': String(timestamp),
       };
 
       if (client?.webhookSecret) {
-        headers['webhook-signature'] = this.signStandard(client.webhookSecret, delivery.id, timestamp, body);
+        Object.assign(
+          headers,
+          signStandardWebhook({ id: delivery.id, timestamp, body, secrets: [client.webhookSecret] }),
+        );
         headers['X-Webhook-Signature'] = this.signPayload(client.webhookSecret, body);
       }
 

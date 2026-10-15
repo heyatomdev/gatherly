@@ -5,6 +5,7 @@ import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { CLAIM_LEASE_MINUTES, QUEUE_BATCH_SIZE, WebhookService } from './webhook.service';
 import { WebhookEventType } from './dto/webhook-event.dto';
+import { signStandardWebhook, webhookAgent } from '@heyatom/nest-common/webhooks';
 
 describe('WebhookService queue', () => {
   const prisma = {
@@ -115,7 +116,9 @@ describe('WebhookService queue', () => {
 
     await service.processQueue();
 
-    const [, body, { headers }] = http.post.mock.calls[0];
+    const [, body, { headers, httpsAgent, maxRedirects }] = http.post.mock.calls[0];
+    expect(httpsAgent).toBe(webhookAgent);
+    expect(maxRedirects).toBe(0);
     expect(body).toBe(JSON.stringify(payload));
     expect(headers['webhook-id']).toBe('d1');
     // Send time, not the enqueue-time body timestamp.
@@ -128,6 +131,37 @@ describe('WebhookService queue', () => {
       'sha256=' + createHmac('sha256', 's').update(body).digest('hex'),
     );
   });
+
+  it('signStandardWebhook matches the pre-package signature byte for byte', () => {
+    // The removed WebhookService.signStandard, verbatim.
+    const legacy = (secret: string, id: string, timestamp: string, body: string) =>
+      'v1,' + createHmac('sha256', secret).update(`${id}.${timestamp}.${body}`).digest('base64');
+    const secret = 'a3f1c0de'.repeat(8);
+    const body = JSON.stringify({ id: 'd1', event: 'participant.joined', data: { userName: 'Zoë ✓' } });
+
+    expect(signStandardWebhook({ id: 'd1', timestamp: 1760000000, body, secrets: [secret] })).toEqual({
+      'webhook-id': 'd1',
+      'webhook-timestamp': '1760000000',
+      'webhook-signature': legacy(secret, 'd1', '1760000000', body),
+    });
+  });
+
+  it.each(['http://example.test/hook', 'https://127.0.0.1/hook', 'https://user:pass@example.test/hook'])(
+    'marks a stored blocked URL FAILED without sending or retrying: %s',
+    async (url) => {
+      prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
+      prisma.webhookDelivery.findMany.mockResolvedValue([row()]);
+      prisma.client.findUnique.mockResolvedValue({ webhookUrl: url, webhookSecret: 's' });
+
+      await service.processQueue();
+
+      expect(http.post).not.toHaveBeenCalled();
+      expect(prisma.webhookDelivery.update).toHaveBeenCalledWith({
+        where: { id: 'd1' },
+        data: { status: 'FAILED', attempts: 1, lastError: 'Delivery failed' },
+      });
+    },
+  );
 
   it('marks FAILED at maxAttempts', async () => {
     prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
