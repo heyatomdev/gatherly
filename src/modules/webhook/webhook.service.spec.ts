@@ -134,7 +134,7 @@ describe('WebhookService queue', () => {
     });
   });
 
-  it('sends Standard Webhooks headers signed over id.timestamp.body, plus the legacy signature', async () => {
+  it('sends Standard Webhooks headers signed over id.timestamp.body, and no legacy signature', async () => {
     prisma.$queryRaw.mockResolvedValue([{ id: 'd1' }]);
     const payload = {
       id: 'd1',
@@ -161,8 +161,8 @@ describe('WebhookService queue', () => {
       .update(`d1.${headers['webhook-timestamp']}.${body}`)
       .digest('base64');
     expect(headers['webhook-signature']).toBe(`v1,${expected}`);
-    expect(headers['X-Webhook-Signature']).toBe(
-      'sha256=' + createHmac('sha256', 's').update(body).digest('hex'),
+    expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain(
+      'x-webhook-signature',
     );
   });
 

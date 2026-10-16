@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { createHmac, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import {
   checkWebhookUrl,
   isWebhookTargetBlocked,
@@ -42,11 +42,6 @@ export class WebhookService {
     private httpService: HttpService,
     private prisma: PrismaService,
   ) {}
-
-  /** Legacy `X-Webhook-Signature` — body only, no replay protection. Remove after one release. */
-  private signPayload(secret: string, body: string): string {
-    return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
-  }
 
   @Cron('* * * * *')
   async processQueue(): Promise<void> {
@@ -129,10 +124,6 @@ export class WebhookService {
             body,
             secrets: [client.webhookSecret],
           }),
-        );
-        headers['X-Webhook-Signature'] = this.signPayload(
-          client.webhookSecret,
-          body,
         );
       }
 

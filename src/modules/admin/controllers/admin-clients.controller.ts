@@ -119,7 +119,7 @@ export class AdminClientsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Regenerate webhook HMAC secret — use to verify X-Webhook-Signature header',
+      'Regenerate webhook HMAC secret — use to verify the Standard Webhooks webhook-signature header',
   })
   async regenerateWebhookSecret(@Request() req, @Param('id') id: string) {
     const result = await this.clients.regenerateWebhookSecret(id);

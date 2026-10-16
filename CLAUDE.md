@@ -437,9 +437,9 @@ generated in `notify()` so both match — consumers dedupe on it, delivery is
 at-least-once), `webhook-timestamp` = unix seconds at **send** time (payload
 `timestamp` is enqueue time and reused on retries — never sign that),
 `webhook-signature` = `v1,` + base64 HMAC-SHA256(secret, `${id}.${ts}.${body}`),
-secret used as a UTF-8 string (not `whsec_` base64). Legacy
-`X-Webhook-Signature: sha256=<hex(body)>` is still sent — remove it one release
-after 2026-10 (deprecated in the integration guide).
+secret used as a UTF-8 string (not `whsec_` base64). Signed via
+`signStandardWebhook` from `@heyatom/nest-common/webhooks`. The legacy
+`X-Webhook-Signature` header was dropped (no receivers existed).
 
 Event types: `event.created`, `event.updated`, `event.cancelled`, `event.published`, `event.completed`, `event.deleted` (admin delete of a `DRAFT`), `participant.joined`, `participant.status_changed`, `participant.removed`, `participant.checked_in`.
 
