@@ -4,6 +4,7 @@ export enum WebhookEventType {
   EVENT_CANCELLED = 'event.cancelled',
   EVENT_PUBLISHED = 'event.published',
   EVENT_COMPLETED = 'event.completed',
+  EVENT_DELETED = 'event.deleted',
 
   PARTICIPANT_JOINED = 'participant.joined',
   PARTICIPANT_STATUS_CHANGED = 'participant.status_changed',
@@ -58,7 +59,8 @@ export interface ParticipantWebhookPayload extends WebhookPayload {
     externalId?: string;
     externalSource?: string;
     status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
-    previousStatus?: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
+    previousStatus?:
+      'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
     role: 'ATTENDEE' | 'SPEAKER' | 'ORGANIZER' | 'HOST';
     checkedIn: boolean;
     checkedInAt?: Date;

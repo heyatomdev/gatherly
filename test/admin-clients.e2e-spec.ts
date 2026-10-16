@@ -44,7 +44,9 @@ describe('Admin Clients API (e2e)', () => {
       .compile();
 
     app = module.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
 
     jwks = module.get(BastionJwksService);
@@ -61,7 +63,10 @@ describe('Admin Clients API (e2e)', () => {
 
   describe('Old public /clients routes are gone', () => {
     it('POST /clients returns 404', async () => {
-      await request(app.getHttpServer()).post('/clients').send({ name: 'x' }).expect(404);
+      await request(app.getHttpServer())
+        .post('/clients')
+        .send({ name: 'x' })
+        .expect(404);
     });
 
     it('GET /clients returns 404', async () => {
@@ -98,7 +103,9 @@ describe('Admin Clients API (e2e)', () => {
     });
 
     it('returns 401 when token is a machine token (type "service_client")', async () => {
-      jwks.verify.mockResolvedValue(makePayload({ type: 'service_client' }) as any);
+      jwks.verify.mockResolvedValue(
+        makePayload({ type: 'service_client' }) as any,
+      );
 
       await request(app.getHttpServer())
         .get('/admin/clients')

@@ -1,4 +1,11 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -26,12 +33,18 @@ export enum TimeseriesInterval {
 }
 
 export class TimeseriesQueryDto {
-  @ApiPropertyOptional({ enum: TimeseriesMetric, default: TimeseriesMetric.EVENTS })
+  @ApiPropertyOptional({
+    enum: TimeseriesMetric,
+    default: TimeseriesMetric.EVENTS,
+  })
   @IsOptional()
   @IsEnum(TimeseriesMetric)
   metric?: TimeseriesMetric = TimeseriesMetric.EVENTS;
 
-  @ApiPropertyOptional({ enum: TimeseriesInterval, default: TimeseriesInterval.MONTH })
+  @ApiPropertyOptional({
+    enum: TimeseriesInterval,
+    default: TimeseriesInterval.MONTH,
+  })
   @IsOptional()
   @IsEnum(TimeseriesInterval)
   interval?: TimeseriesInterval = TimeseriesInterval.MONTH;

@@ -55,7 +55,9 @@ export class TagController {
 
   @Delete(':tagId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete tag — removed from all events automatically' })
+  @ApiOperation({
+    summary: 'Delete tag — removed from all events automatically',
+  })
   async deleteTag(@Request() req, @Param('tagId') tagId: string) {
     return this.tagService.deleteTag(tagId, req.client.id);
   }

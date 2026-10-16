@@ -13,7 +13,7 @@ Multi-tenant event management API. Clients (gyms, gaming orgs, etc.) call the AP
 - **ORM**: Prisma 7 + PostgreSQL
 - **Package manager**: pnpm (enforced — `npm install` fails)
 - **Validation**: class-validator + class-transformer (global ValidationPipe with whitelist + transform)
-- **Docs**: Swagger at `/docs`
+- **Docs**: Swagger at `/docs` when `ENABLE_SWAGGER` (see HTTP contract)
 - **Scheduling**: `@nestjs/schedule` (cron jobs)
 - **HTTP client**: `@nestjs/axios` (webhook delivery)
 
@@ -42,11 +42,13 @@ defaults live there only; `main.ts` reads them through `ConfigService`.
 | `NODE_ENV` | `development` | No |
 | `PORT` | `3000` | No |
 | `CORS_ORIGINS` | `http://localhost:3000` (comma-separated) | No |
+| `TRUST_PROXY_HOPS` | `0` | No (`1` behind nginx — the IP throttler keys on `req.ip`) |
+| `ENABLE_SWAGGER` | `true` only if `NODE_ENV` is explicitly `development`/`test` | No |
 | `LOG_LEVEL` | `info` | No |
 | `BASTION_URL` | — | Yes |
 | `BASTION_APP_SLUG` | — | Yes |
 | `BASTION_CLIENT_API_KEY` | — | Yes |
-| `BASTION_TENANT_SLUG` | — | No (single-tenant only) |
+| `BASTION_TENANT_SLUG` | — | Yes when Gatherly's Bastion service client is global (no tenant) or `gatherly` has clients in several tenants — `POST /auth/client` answers 400 without it and audit writes stop. Optional only for a single tenant-bound client |
 | `BASTION_JWKS_TTL_MS` | `300000` | No |
 | `THROTTLE_TTL_MS` | `60000` | No |
 | `THROTTLE_LIMIT` | `100` | No |
@@ -74,6 +76,9 @@ pnpm build            # compile to dist/
 pnpm prisma:studio    # Prisma GUI
 pnpm prisma:migrate   # run migrations
 pnpm lint             # ESLint fix
+pnpm test             # unit (mocked Prisma)
+pnpm test:e2e         # HTTP e2e, mocked Prisma
+pnpm test:int         # real Postgres via Testcontainers (Docker required) + prisma migrate deploy
 ```
 
 ---
@@ -154,6 +159,17 @@ ADMIN/OWNER/SUPER_ADMIN only) at method level: `PATCH /admin/settings`
 (webhookUrl → redirect webhook payloads), `POST /admin/settings/webhook-secret`
 (returns the new HMAC secret), `POST /admin/webhooks/deliveries/:id/retry`.
 GETs stay open to all accepted roles (settings GET returns safe fields only).
+Both settings writes are audited (`settings.updated` with changed field
+names + `webhookUrlChanged`, `settings.webhook_secret_regenerated`),
+like `/admin/clients` (`client.created|updated|revoked|reactivated|token_regenerated|webhook_secret_regenerated`)
+— never log the HMAC secret or token. Admin writes go through
+`BastionAuditService.writeAsAdmin(event, req.adminUser, metadata)`: it sets
+`userId` only when the admin is in the service token's tenant (Bastion drops a
+foreign `userId`), otherwise puts `actorId`/`actorRole`/`actorAppSlug` in metadata.
+**Event names have exactly one dot** (`resource.action`, Bastion's
+`CreateEventDto` regex) — Bastion prefixes the service slug itself and stores
+`gatherly.settings.updated` with `appSlug: gatherly`, so no `admin.` prefix:
+a second dot is a `400` that `BastionAuditService` only logs.
 Method-level only: it reads `req.adminUser`, which the class-level
 `BastionUserGuard` sets first; without it the guard denies.
 
@@ -174,8 +190,8 @@ not 401 (package semantics: authenticated, wrong audience).
 
 The global `BastionJwtGuard` (`src/modules/bastion/guards/bastion-jwt.guard.ts`,
 registered as `APP_GUARD`, a subclass of `ServiceClientJwtGuard` from
-`@heyatom/bastion-client/nest` that adds the local `Client` lookup) returns `true` for **every** path starting with
-`/admin`, no exceptions — auth for the whole admin surface is deferred to
+`@heyatom/bastion-client/nest` that adds the local `Client` lookup) returns `true` for `/admin` and **every** `/admin/...` path
+(not `/administrators` — exact segment match), no exceptions — auth for the whole admin surface is deferred to
 per-controller `@UseGuards(...)`. A new controller under `AdminModule` (or
 any new controller mounted at `/admin/...`) that forgets its own guard is
 **fully public**, no auth at all. Every admin controller today puts
@@ -261,7 +277,41 @@ Domain-specific data via `metadata`:
 { "userName": "Team A", "metadata": { "team": "Red", "seed": 3, "rank": "Diamond" } }
 ```
 
-Waitlist is automatic: if `maxParticipants` reached, status becomes `WAITLIST`. Cancelling a participant promotes the first waitlisted.
+Waitlist is automatic: if `maxParticipants` reached, status becomes `WAITLIST`. Cancelling a participant promotes the first waitlisted. Raising `maxParticipants` via `PATCH /events/:id` (or setting it to `null`) promotes waitlisted participants, oldest first, into every freed seat — one `participant.status_changed` each.
+
+**Registration rules** (`addParticipant` and bulk, tenant and `/admin` alike — no admin bypass): the event must be `PUBLISHED` and not yet over (`endTime`, or `startTime` when there is no `endTime`, still in the future). Otherwise `409`; bulk rejects the whole batch. Checked inside the locked transaction (`assertAcceptsRegistrations`).
+
+**Seats**: `REGISTERED`, `CONFIRMED` and `ATTENDED` all take a seat (`ACTIVE_STATUSES`). Check-in must not free a seat, or the event overbooks while people are in the room. `PUT .../checkin` works only from `REGISTERED`/`CONFIRMED` (under `lockEvent()`); already `ATTENDED` returns the row unchanged with no webhook; `WAITLIST`/`CANCELLED` → `409`. `PATCH .../status` to `ATTENDED` from `WAITLIST` goes through the normal capacity check.
+
+### Event status is not writable
+
+Neither `CreateEventDto` nor `UpdateEventDto` has `status` — `POST /events` and
+`PATCH /events/:id` with `status` are a `400` (`forbidNonWhitelisted`); every
+event starts as `DRAFT`. Transitions only via `PUT /events/:id/publish`,
+`/cancel`, `/complete`, which validate (publish: title + future start), cascade
+(cancel: future recurring children), audit and emit the right webhook.
+
+`DELETE /admin/events/:id` (admin only, no machine route) hard-deletes a
+`DRAFT` → `204`, audit `event.deleted`, webhook `event.deleted` (the subscriber
+already got `event.created`). Anything past `DRAFT` → `409`, cancel it instead;
+a draft series with a non-`DRAFT` occurrence → `409` (the FK cascade would take
+it along). Deleting the series root also drops its `RecurrenceRule`.
+
+### Idempotency (`src/common/idempotency.interceptor.ts`)
+
+`Idempotency-Key` on `POST /events`, `POST /events/:id/participants`,
+`POST /events/:id/participants/bulk`. Row in `idempotency_keys` keyed by
+`(key, clientId, "METHOD originalUrl")`, TTL 24h. Claim first (insert with
+`statusCode 0` = IN_PROGRESS), then run the handler.
+
+- `requestHash` = sha256 of the canonical (sorted-keys) JSON body. Same key,
+  different body → `422`. Legacy rows with null hash skip the check.
+- IN_PROGRESS younger than `STALE_CLAIM_MS` (2 min) → `409`; older is an
+  abandoned claim (crash) and is taken over. Expired rows not yet cleaned up are
+  taken over too. Takeover is a compare-and-set `updateMany` on
+  `(id, statusCode, createdAt)` so one concurrent retry wins, the rest get 409.
+- Handler error → claim deleted (retry runs again). Storing the response fails
+  → retried once, then claim deleted and logged as `error`.
 
 ### Updating tags on an event
 
@@ -283,6 +333,35 @@ Upserts by `(eventId, locale)` — existing locale is updated, new locale is cre
 
 ---
 
+## HTTP contract (`@heyatom/nest-common`)
+
+Platform standard (`../docs/standards/api.md`), all from the package — don't re-implement locally:
+
+- **Bootstrap** (`main.ts`): `setupHttpApp()` — shutdown hooks, `trust proxy` from
+  `TRUST_PROXY_HOPS`, helmet, CORS allowlist from `CORS_ORIGINS` (disallowed origin → no CORS
+  headers, never a 500; `Idempotency-Key` allowed), 1mb JSON limit, global `ValidationPipe`
+  (whitelist + forbidNonWhitelisted + transform). No `rawBody`: Gatherly has no signed inbound
+  webhooks (turn it on in `NestFactory.create` only if one is added).
+- **Envelope**: `TransformInterceptor` as `APP_INTERCEPTOR` — 2xx bodies become `{ data }`;
+  `paginate()` results pass through as `{ data, meta }`.
+- **Errors**: `AllExceptionsFilter` as `APP_FILTER` — `{ statusCode, code, message, errors?,
+  requestId }`. Validation → `400 VALIDATION_FAILED` + `errors[]`; unknown errors → generic
+  `500 INTERNAL_ERROR`; Prisma `P2002`/`P2003` → `409 CONFLICT`, `P2025` → `404`. So **don't
+  catch P2002 just to throw a code-less 409** — catch it only inside a `$transaction` or to give
+  a specific code. Throw domain errors as `new XException({ code: 'UPPER_SNAKE', message })`;
+  current codes: `IDEMPOTENCY_IN_PROGRESS`, `IDEMPOTENCY_KEY_REUSED` (422),
+  `REGISTRATION_CLOSED`, `ALREADY_REGISTERED`, `EVENT_FULL`, `TENANT_TAKEN`,
+  `WEBHOOK_TARGET_BLOCKED` (400). Meridian reads `errors` on validation 400s.
+- **Pagination**: list query DTOs **extend** `PageParams` (`page` 1, `limit` 20, max 100,
+  `skip` getter — lost on spread); services return `paginate(data, total, query)` and controllers
+  return it **as is** with `@ApiPaginatedResponse()`. The envelope recognises it by a marker: a
+  copy (spread, class-transformer, `structuredClone`) or a hand-built `{ data, meta }` gets
+  wrapped again in `{ data }`. Paginated: `/events`, `/events/:id/participants`, the
+  same under `/admin`, `/admin/people`. Other lists aren't — paginating them is a contract change.
+- **Swagger**: `ENABLE_SWAGGER` resolved in `validate()` by `swaggerEnabled()` from the raw
+  `NODE_ENV` (unset → off); `setupSwagger()` with title `Gatherly`, version `APP_VERSION`
+  (`src/common/app-version.ts`, `readAppVersion()`), UI `/docs`, JSON `/docs-json`.
+
 ## API Endpoints
 
 ### Clients — `/admin/clients` (SUPER_ADMIN only, Bastion user JWT)
@@ -301,7 +380,7 @@ No more public `/clients` — see "Client management — no longer self-service"
 | `GET` | `/admin/clients/:id/webhook-deliveries?status=` | Webhook delivery attempts |
 
 `tenantId` is `@unique` on `Client` — a duplicate on create/update returns
-`409 Conflict`, not a 500.
+`409 TENANT_TAKEN`, not a 500.
 
 ### Categories (auth required)
 
@@ -347,9 +426,24 @@ No more public `/clients` — see "Client management — no longer self-service"
 
 Client sets `webhookUrl` on their record. `WebhookService.notify` writes a `WebhookDelivery` row (outbox); the `processQueue` cron POSTs it, HMAC-signed with the client's webhook secret.
 
-Event types: `event.created`, `event.updated`, `event.cancelled`, `event.published`, `event.completed`, `participant.joined`, `participant.status_changed`, `participant.removed`, `participant.checked_in`.
+**URL and secret are read from `Client` at send time**, not from the row:
+`WebhookDelivery.webhookUrl` is the URL at enqueue time, audit only. Queued rows
+and manual retries follow a URL change; if the client's URL is now null the row
+goes `FAILED` (`lastError: "Webhook URL removed"`) without sending, and
+`retryDelivery` refuses with 400.
 
-All nine are emitted from `EventService` (not controllers), so the tenant API
+**Headers (Standard Webhooks)**: `webhook-id` = delivery id (also payload `id`,
+generated in `notify()` so both match — consumers dedupe on it, delivery is
+at-least-once), `webhook-timestamp` = unix seconds at **send** time (payload
+`timestamp` is enqueue time and reused on retries — never sign that),
+`webhook-signature` = `v1,` + base64 HMAC-SHA256(secret, `${id}.${ts}.${body}`),
+secret used as a UTF-8 string (not `whsec_` base64). Signed via
+`signStandardWebhook` from `@heyatom/nest-common/webhooks`. The legacy
+`X-Webhook-Signature` header was dropped (no receivers existed).
+
+Event types: `event.created`, `event.updated`, `event.cancelled`, `event.published`, `event.completed`, `event.deleted` (admin delete of a `DRAFT`), `participant.joined`, `participant.status_changed`, `participant.removed`, `participant.checked_in`.
+
+All ten are emitted from `EventService` (not controllers), so the tenant API
 and `/admin/events` both fire them. Single entry point:
 `WebhookService.notify(clientId, type, item | item[], extra?)` — looks up the
 client's `webhookUrl` (no-op if unset) and builds the payload itself via
@@ -383,14 +477,21 @@ with a plain `findMany` — that's how double sends happened.
 `title`/`description` in the default locale, tag slugs, no `participants`,
 no `translations` array. Don't send raw `EVENT_INCLUDE` rows (participant PII).
 
-**SSRF guard** (`webhook-url.ts`): `webhookUrl` must be `https`. On save
-(`/admin/settings`, `/admin/clients`) the host is resolved and
-private/loopback/link-local/ULA/metadata/NAT64 addresses → 400. At send time
-the URL is re-checked and the request goes through `webhookAgent`, whose DNS
-lookup refuses private addresses (stored URLs, DNS rebinding). No redirects,
-64KB response cap, 10s total deadline. `lastError` is `HTTP <status>` or
-`Delivery failed` — never the raw socket error. Pre-existing `http://` URLs
-now fail delivery until updated.
+**SSRF guard** — lives in `@heyatom/nest-common/webhooks` (shared with herald
+and bastion; no local copy, fix rules there). `webhookUrl` must be `https`, no
+credentials in the URL. On save (`/admin/settings`, `/admin/clients`, both via
+`ClientService`) `assertPublicWebhookUrl` resolves the host and refuses it
+unless **every** address is public (private/loopback/link-local/ULA/metadata/
+NAT64/`::/96`/`2001:db8::/32`, or no answer) → 400 with the package's
+`WebhookUrlError` message. At send time `checkWebhookUrl` re-checks the stored
+URL and the request goes through the package's `webhookAgent`, whose DNS
+lookup refuses private addresses (DNS rebinding). Either refusal is terminal:
+straight to `FAILED`, no retries (the package's `isWebhookTargetBlocked()`
+also matches the agent's refusal wrapped by axios: `code`
+`WEBHOOK_TARGET_BLOCKED`, `cause` `WebhookUrlError`). No redirects, 64KB response cap, 10s total
+deadline. `lastError` is `HTTP <status>` or `Delivery failed` — never the raw
+socket error. Signing is the package's `signStandardWebhook` (byte-identical
+to the old local HMAC).
 
 ---
 
@@ -402,18 +503,37 @@ now fail delivery until updated.
 - `Tag.slug` is auto-lowercased at service level before DB write.
 - `EventTag` is an explicit junction model (not implicit many-to-many) — cannot use Prisma's `connect`/`set` shorthand. Use `deleteMany` + `createMany` to replace tags.
 - `participants_email_norm_idx` is an expression index on `lower(trim(email))` (People/analytics match on that), created in raw SQL in `20261008090000_perf_indexes` — Prisma can't model it and ignores it in diffs. Don't add a plain `@@index([email])` back.
-- Capacity (`maxParticipants`) is enforced under a row lock: every participant write that can change the active count (`addParticipant`, bulk, `removeParticipant`, `updateParticipantStatus`) starts its transaction with `lockEvent()` (`SELECT ... FROM events WHERE id AND clientId FOR UPDATE`), then counts. No Serializable isolation, no retries needed. New writes of that kind must do the same.
-- Event list/detail return `_count.participants` (active = REGISTERED + CONFIRMED), never the participant rows — use `GET /events/:id/participants` (paginated). Detail's `childEvents` is `{ id, startTime, status, _count }`, first 100 by `startTime`.
+- Capacity (`maxParticipants`) is enforced under a row lock: every participant write that can change the active count (`addParticipant`, bulk, `removeParticipant`, `updateParticipantStatus`, `checkInParticipant`, and `updateEvent` for waitlist promotion) starts its transaction with `lockEvent()` (`SELECT ... FROM events WHERE id AND clientId FOR UPDATE`), then counts. No Serializable isolation, no retries needed. New writes of that kind must do the same.
+- Event list/detail return `_count.participants` (active = REGISTERED + CONFIRMED + ATTENDED), never the participant rows — use `GET /events/:id/participants` (paginated). Detail's `childEvents` is `{ id, startTime, status, _count }`, first 100 by `startTime`.
 - pg pool: `DATABASE_POOL_MAX` (10), `DATABASE_CONNECTION_TIMEOUT_MS` (5000), `DATABASE_STATEMENT_TIMEOUT_MS` (30000), read by `PrismaService`.
 
 ---
 
+## Logging
+
+nestjs-pino, configured by `loggerConfig()` (`src/configs/logger.config.ts`):
+`loggerParams()` from `@heyatom/nest-common` (level from `LOG_LEVEL`, pretty
+unless `NODE_ENV=production`), its default serializers — request logs carry
+`req.{id,method,url,remoteAddress}` and `res.statusCode`, never headers or
+bodies. Need different ones (e.g. URLs with tokens)? `loggerParams({ serializers })`.
+
+- **Request id is always server-generated** (UUID, the package's `genReqId`)
+  and returned as `X-Request-Id`, errors included. A caller's `X-Request-Id`
+  is never adopted nor echoed; if it matches `[A-Za-z0-9._-]{1,64}` it is
+  logged as `clientRequestId`, otherwise dropped. There is no local
+  request-id middleware any more.
+- `/health*` (live and ready) is never access-logged (prefix match), and `@SkipThrottle()`:
+  probes never share the per-IP bucket with real traffic.
+- Webhook delivery logs carry the delivery id and the target **host** only: a tenant can put a
+  token in the query string of its `webhookUrl`.
+- Every line has `service: "gatherly"`.
+
 ## Metrics
 
-`GET /metrics` (Prometheus, `@prometheus-io/client`) is served by `MetricsServer` (`src/modules/metrics/`) on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`).
+Comes from `@heyatom/nest-common/metrics`: `MetricsModule.forRootAsync({ app: 'gatherly', port: METRICS_PORT })` in `AppModule` (global). `GET /metrics` (Prometheus, `@prometheus-io/client`) is served by the package's `MetricsServer` on its own port, `METRICS_PORT` (default 9091) — a bare `node:http` listener outside the Nest app, so no guards, throttler or CORS, and no route on the API port. Own `Registry` with default label `app=gatherly`: default process metrics + `http_request_duration_seconds` (`method`/`route`/`status`). Listens on `::` (IPv4 + IPv6). A request the client abandons before the response is counted with `status="499"`. One render is cached for 10s (`MetricsServer.SCRAPE_CACHE_MS`), so scrapes closer than that see the same values. Only the domain gauges are gatherly code: `WebhookMetrics` (`src/modules/webhook/webhook.metrics.ts`) registers them on the package's `MetricsService.registry` — new domain metrics go there the same way, `gatherly_` prefix.
 
 - **Isolation is the network's job**: never publish 9091 from the container, nginx never proxies it. Prometheus scrapes `gatherly:9091` on the internal Docker network.
-- `MetricsMiddleware` (all routes, in `AppModule.configure`) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.
+- `MetricsMiddleware` (all routes, applied by the package's `MetricsModule` itself) is a middleware, not an interceptor, so guard 401s and throttler 429s are counted. `route` is the Nest route pattern (`/events/:id`), never the raw URL; requests matching no controller are `unmatched`. `/health/*` is not instrumented.
 - **`gatherly_webhook_deliveries{status}`** (gauge): `webhook_deliveries` rows per `WebhookDeliveryStatus` (`PENDING`/`DELIVERED`/`FAILED`), every value always emitted, 0 if absent. `DELIVERED` drops weekly (cleanup cron deletes old rows), so read trends, not absolutes.
 - **`gatherly_webhook_deliveries_overdue`** (gauge): `PENDING` rows with `nextRetryAt` in the past — the "queue is stuck" signal. `PENDING` is the only non-terminal status (`FAILED` is final after `maxAttempts`, back to `PENDING` only via manual retry). `WebhookService.processQueue` runs every minute (50 rows per tick), so short non-zero blips are normal. Suggested alert: `gatherly_webhook_deliveries_overdue > 0 for 15m`. Served by the `(status, nextRetryAt)` index.
 - Both gauges are computed lazily in `collect()` (no query until scraped); a DB error logs `warn` and keeps the previous value instead of failing the scrape.
@@ -458,9 +578,10 @@ Rules:
 
 ## Docs
 
-- `../docs/GATHERLY_INTEGRATION.md` — integration guide per altri servizi (unica copia)
-- `docs/dev-plans/` — piani di sviluppo storici
-- `../docs/BASTION_INTEGRATION.md` — Bastion JWT/JWKS guide
-- `../docs/FILEHARBOR_INTEGRATION.md` — FileHarbor integration guide
-- `../docs/ARTICUNO_INTEGRATION.md` — Articuno integration guide
-- `../docs/CODING_STANDARDS.md` — NestJS conventions condivise
+@../docs/integrations/bastion.md
+
+- [`docs/BACKLOG.md`](docs/BACKLOG.md) — bug verificati e backlog
+- [`docs/plans/`](docs/plans/README.md) — piani di sviluppo (chiusi in `docs/plans/done/`)
+- [`../docs/integrations/gatherly.md`](../docs/integrations/gatherly.md) — integration guide per altri servizi (unica copia)
+- [`../docs/standards/coding.md`](../docs/standards/coding.md) — NestJS conventions condivise
+- [`../docs/standards/documentation.md`](../docs/standards/documentation.md) — convenzione documentazione

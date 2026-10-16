@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { EventService, parseRecurrenceRule } from './event.service';
 import { PrismaService } from '@/modules/prisma/prisma.service';
@@ -13,6 +17,8 @@ const mockTx = {
     update: jest.fn(),
     updateMany: jest.fn(),
     createMany: jest.fn(),
+    count: jest.fn(),
+    deleteMany: jest.fn(),
   },
   participant: {
     create: jest.fn(),
@@ -20,10 +26,11 @@ const mockTx = {
     findFirst: jest.fn(),
     findMany: jest.fn(),
     update: jest.fn(),
+    updateManyAndReturn: jest.fn(),
     count: jest.fn(),
   },
   tag: { createMany: jest.fn(), findMany: jest.fn() },
-  recurrenceRule: { create: jest.fn() },
+  recurrenceRule: { create: jest.fn(), deleteMany: jest.fn() },
   eventTranslation: { createMany: jest.fn(), upsert: jest.fn() },
   eventTag: { createMany: jest.fn(), deleteMany: jest.fn() },
   idempotencyKey: { deleteMany: jest.fn() },
@@ -51,8 +58,28 @@ const defaultTransaction = async (arg: any) =>
   typeof arg === 'function' ? arg(mockTx) : Promise.all(arg);
 
 /** Row returned by the SELECT ... FOR UPDATE in lockEvent. */
-const lockReturns = (maxParticipants: number | null) =>
-  mockTx.$queryRaw.mockResolvedValue([{ id: EVENT_ID, maxParticipants }]);
+const lockReturns = (
+  maxParticipants: number | null,
+  overrides: Record<string, any> = {},
+) =>
+  mockTx.$queryRaw.mockResolvedValue([
+    {
+      id: EVENT_ID,
+      status: 'PUBLISHED',
+      startTime: new Date(Date.now() + 86_400_000),
+      endTime: null,
+      maxParticipants,
+      ...overrides,
+    },
+  ]);
+
+/** Waitlist promotion: findMany picks the ids, updateManyAndReturn flips them. */
+const waitlistReturns = (...ids: string[]) => {
+  mockTx.participant.findMany.mockResolvedValue(ids.map((id) => ({ id })));
+  mockTx.participant.updateManyAndReturn.mockResolvedValue(
+    ids.map((id) => baseParticipant({ id, status: 'REGISTERED' })),
+  );
+};
 
 const mockAudit = { write: jest.fn() };
 const mockWebhook = { notify: jest.fn() };
@@ -114,10 +141,12 @@ describe('EventService', () => {
     service = module.get(EventService);
     jest.resetAllMocks();
     mockPrisma.$transaction.mockImplementation(defaultTransaction);
-    mockPrisma.withAdvisoryLock.mockImplementation(async (_name: string, fn: any) => {
-      await fn(mockTx);
-      return true;
-    });
+    mockPrisma.withAdvisoryLock.mockImplementation(
+      async (_name: string, fn: any) => {
+        await fn(mockTx);
+        return true;
+      },
+    );
     mockWebhook.notify.mockResolvedValue(undefined);
   });
 
@@ -148,7 +177,7 @@ describe('EventService', () => {
       const { include } = mockPrisma.event.findMany.mock.calls[0][0];
       expect(include.participants).toBeUndefined();
       expect(include._count.select.participants.where).toEqual({
-        status: { in: ['REGISTERED', 'CONFIRMED'] },
+        status: { in: ['REGISTERED', 'CONFIRMED', 'ATTENDED'] },
       });
     });
   });
@@ -167,7 +196,11 @@ describe('EventService', () => {
       mockPrisma.eventCategory.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.createEvent(CLIENT_ID, { ...dto, categoryId: 'nope', recurrenceRule: 'FREQ=DAILY' } as any),
+        service.createEvent(CLIENT_ID, {
+          ...dto,
+          categoryId: 'nope',
+          recurrenceRule: 'FREQ=DAILY',
+        } as any),
       ).rejects.toThrow(NotFoundException);
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
       expect(mockTx.recurrenceRule.create).not.toHaveBeenCalled();
@@ -177,7 +210,10 @@ describe('EventService', () => {
       mockTx.tag.findMany.mockResolvedValue([{ id: 't1' }, { id: 't2' }]);
       mockTx.event.create.mockResolvedValue(baseEvent());
 
-      await service.createEvent(CLIENT_ID, { ...dto, tagSlugs: ['Yoga', 'yoga', '5v5'] } as any);
+      await service.createEvent(CLIENT_ID, {
+        ...dto,
+        tagSlugs: ['Yoga', 'yoga', '5v5'],
+      } as any);
 
       expect(mockTx.tag.createMany).toHaveBeenCalledWith({
         data: [
@@ -190,14 +226,17 @@ describe('EventService', () => {
         create: [{ tagId: 't1' }, { tagId: 't2' }],
       });
       expect(mockWebhook.notify).toHaveBeenCalledWith(
-        CLIENT_ID, 'event.created', expect.objectContaining({ id: EVENT_ID }), undefined,
+        CLIENT_ID,
+        'event.created',
+        expect.objectContaining({ id: EVENT_ID }),
+        undefined,
       );
     });
   });
 
   describe('updateEvent', () => {
     it('writes translations, tags and scalars in one transaction', async () => {
-      mockPrisma.event.findFirst.mockResolvedValue({ status: 'DRAFT' });
+      lockReturns(null);
       mockTx.tag.findMany.mockResolvedValue([{ id: 't1' }]);
       mockTx.event.update.mockResolvedValue(baseEvent());
 
@@ -209,15 +248,87 @@ describe('EventService', () => {
 
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
       expect(mockTx.eventTranslation.upsert).toHaveBeenCalledTimes(1);
-      expect(mockTx.eventTag.deleteMany).toHaveBeenCalledWith({ where: { eventId: EVENT_ID } });
+      expect(mockTx.eventTag.deleteMany).toHaveBeenCalledWith({
+        where: { eventId: EVENT_ID },
+      });
       expect(mockTx.event.update).toHaveBeenCalled();
-      expect(mockWebhook.notify).toHaveBeenCalledWith(CLIENT_ID, 'event.updated', expect.anything(), undefined);
+      expect(mockWebhook.notify).toHaveBeenCalledWith(
+        CLIENT_ID,
+        'event.updated',
+        expect.anything(),
+        undefined,
+      );
     });
 
-    it('throws NotFoundException when event not found', async () => {
-      mockPrisma.event.findFirst.mockResolvedValue(null);
+    it('throws NotFoundException when event not found (or belongs to another client)', async () => {
+      mockTx.$queryRaw.mockResolvedValue([]);
 
-      await expect(service.updateEvent(EVENT_ID, CLIENT_ID, {} as any)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.updateEvent(EVENT_ID, CLIENT_ID, {} as any),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockTx.event.update).not.toHaveBeenCalled();
+    });
+
+    it('promotes waitlisted participants into the seats freed by a higher maxParticipants', async () => {
+      lockReturns(2);
+      mockTx.event.update.mockResolvedValue(baseEvent({ maxParticipants: 4 }));
+      mockTx.participant.count.mockResolvedValue(2);
+      waitlistReturns('w1', 'w2');
+
+      await service.updateEvent(EVENT_ID, CLIENT_ID, {
+        maxParticipants: 4,
+      } as any);
+
+      expect(mockTx.participant.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { eventId: EVENT_ID, status: 'WAITLIST' },
+          take: 2,
+        }),
+      );
+      expect(mockTx.participant.updateManyAndReturn).toHaveBeenCalledWith({
+        where: { id: { in: ['w1', 'w2'] } },
+        data: { status: 'REGISTERED' },
+      });
+      expect(mockWebhook.notify).toHaveBeenCalledWith(
+        CLIENT_ID,
+        'participant.status_changed',
+        [
+          expect.objectContaining({ id: 'w1' }),
+          expect.objectContaining({ id: 'w2' }),
+        ],
+        { previousStatus: 'WAITLIST' },
+      );
+    });
+
+    it('promotes the whole waitlist when the cap is removed', async () => {
+      lockReturns(2);
+      mockTx.event.update.mockResolvedValue(
+        baseEvent({ maxParticipants: null }),
+      );
+      waitlistReturns('w1');
+
+      await service.updateEvent(EVENT_ID, CLIENT_ID, {
+        maxParticipants: null,
+      } as any);
+
+      expect(mockTx.participant.findMany.mock.calls[0][0].take).toBeUndefined();
+      expect(mockTx.participant.updateManyAndReturn).toHaveBeenCalled();
+    });
+
+    it('does not promote when maxParticipants is lowered or untouched', async () => {
+      lockReturns(4);
+      mockTx.event.update.mockResolvedValue(baseEvent({ maxParticipants: 3 }));
+      await service.updateEvent(EVENT_ID, CLIENT_ID, {
+        maxParticipants: 3,
+      } as any);
+
+      mockTx.event.update.mockResolvedValue(baseEvent({ maxParticipants: 4 }));
+      await service.updateEvent(EVENT_ID, CLIENT_ID, {
+        locationName: 'Gym',
+      } as any);
+
+      expect(mockTx.participant.findMany).not.toHaveBeenCalled();
+      expect(mockTx.participant.updateManyAndReturn).not.toHaveBeenCalled();
     });
   });
 
@@ -229,47 +340,78 @@ describe('EventService', () => {
       mockTx.event.update.mockResolvedValue(baseEvent({ status: 'CANCELLED' }));
       mockTx.event.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.cancelEvent(EVENT_ID, CLIENT_ID)).resolves.toBeDefined();
+      await expect(
+        service.cancelEvent(EVENT_ID, CLIENT_ID),
+      ).resolves.toBeDefined();
       expect(mockTx.event.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'CANCELLED' } }),
       );
-      expect(mockWebhook.notify).toHaveBeenCalledWith(CLIENT_ID, 'event.cancelled', expect.anything(), undefined);
+      expect(mockWebhook.notify).toHaveBeenCalledWith(
+        CLIENT_ID,
+        'event.cancelled',
+        expect.anything(),
+        undefined,
+      );
     });
 
     it('throws BadRequestException for CANCELLED → CANCELLED', async () => {
       mockPrisma.event.findFirst.mockResolvedValue({ status: 'CANCELLED' });
 
-      await expect(service.cancelEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.cancelEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws BadRequestException for COMPLETED → CANCELLED', async () => {
       mockPrisma.event.findFirst.mockResolvedValue({ status: 'COMPLETED' });
 
-      await expect(service.cancelEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.cancelEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
   describe('publishEvent', () => {
     it('transitions DRAFT → PUBLISHED', async () => {
-      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ status: 'DRAFT' }));
-      mockPrisma.event.update.mockResolvedValue(baseEvent({ status: 'PUBLISHED' }));
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ status: 'DRAFT' }),
+      );
+      mockPrisma.event.update.mockResolvedValue(
+        baseEvent({ status: 'PUBLISHED' }),
+      );
 
-      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).resolves.toBeDefined();
-      expect(mockWebhook.notify).toHaveBeenCalledWith(CLIENT_ID, 'event.published', expect.anything(), undefined);
+      await expect(
+        service.publishEvent(EVENT_ID, CLIENT_ID),
+      ).resolves.toBeDefined();
+      expect(mockWebhook.notify).toHaveBeenCalledWith(
+        CLIENT_ID,
+        'event.published',
+        expect.anything(),
+        undefined,
+      );
     });
 
     it('throws BadRequestException when no translations', async () => {
-      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ status: 'DRAFT', translations: [] }));
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ status: 'DRAFT', translations: [] }),
+      );
 
-      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws BadRequestException when title is blank', async () => {
       mockPrisma.event.findFirst.mockResolvedValue(
-        baseEvent({ status: 'DRAFT', translations: [{ locale: 'it', title: '   ' }] }),
+        baseEvent({
+          status: 'DRAFT',
+          translations: [{ locale: 'it', title: '   ' }],
+        }),
       );
 
-      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws BadRequestException when startTime is in the past', async () => {
@@ -277,46 +419,164 @@ describe('EventService', () => {
         baseEvent({ status: 'DRAFT', startTime: new Date(Date.now() - 1000) }),
       );
 
-      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws BadRequestException for COMPLETED → PUBLISHED', async () => {
-      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ status: 'COMPLETED' }));
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ status: 'COMPLETED' }),
+      );
 
-      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.publishEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('deleteEvent', () => {
+    beforeEach(() => {
+      mockTx.event.count.mockResolvedValue(0);
+      mockTx.event.deleteMany.mockResolvedValue({ count: 1 });
+    });
+
+    it('deletes a DRAFT, audits it and emits event.deleted', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ status: 'DRAFT' }),
+      );
+
+      await expect(
+        service.deleteEvent(EVENT_ID, CLIENT_ID),
+      ).resolves.toBeUndefined();
+      expect(mockTx.event.deleteMany).toHaveBeenCalledWith({
+        where: { id: EVENT_ID, clientId: CLIENT_ID, status: 'DRAFT' },
+      });
+      expect(mockTx.recurrenceRule.deleteMany).not.toHaveBeenCalled();
+      expect(mockAudit.write).toHaveBeenCalledWith('event.deleted', {
+        metadata: { eventId: EVENT_ID, clientId: CLIENT_ID },
+      });
+      expect(mockWebhook.notify).toHaveBeenCalledWith(
+        CLIENT_ID,
+        'event.deleted',
+        expect.objectContaining({ id: EVENT_ID }),
+        undefined,
+      );
+    });
+
+    it('throws NotFoundException for an event of another client', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(null);
+
+      await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockTx.event.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it.each(['PUBLISHED', 'CANCELLED', 'COMPLETED'])(
+      'refuses a %s event with 409',
+      async (status) => {
+        mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ status }));
+
+        await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+          ConflictException,
+        );
+        expect(mockTx.event.deleteMany).not.toHaveBeenCalled();
+        expect(mockWebhook.notify).not.toHaveBeenCalled();
+      },
+    );
+
+    it('refuses a draft series with a published occurrence', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ recurrenceRuleId: 'r1', parentEventId: null }),
+      );
+      mockTx.event.count.mockResolvedValue(1);
+
+      await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockTx.event.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the event was published in the meantime', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(baseEvent());
+      mockTx.event.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.deleteEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockAudit.write).not.toHaveBeenCalled();
+    });
+
+    it('drops the recurrence rule with the series root, not with one occurrence', async () => {
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ recurrenceRuleId: 'r1', parentEventId: null }),
+      );
+      await service.deleteEvent(EVENT_ID, CLIENT_ID);
+      expect(mockTx.recurrenceRule.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+      });
+
+      mockTx.recurrenceRule.deleteMany.mockClear();
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ recurrenceRuleId: 'r1', parentEventId: 'parent' }),
+      );
+      await service.deleteEvent(EVENT_ID, CLIENT_ID);
+      expect(mockTx.recurrenceRule.deleteMany).not.toHaveBeenCalled();
     });
   });
 
   describe('completeEvent', () => {
     it('transitions PUBLISHED → COMPLETED', async () => {
       mockPrisma.event.findFirst.mockResolvedValue({ status: 'PUBLISHED' });
-      mockPrisma.event.update.mockResolvedValue(baseEvent({ status: 'COMPLETED' }));
+      mockPrisma.event.update.mockResolvedValue(
+        baseEvent({ status: 'COMPLETED' }),
+      );
 
-      await expect(service.completeEvent(EVENT_ID, CLIENT_ID)).resolves.toBeDefined();
-      expect(mockWebhook.notify).toHaveBeenCalledWith(CLIENT_ID, 'event.completed', expect.anything(), undefined);
+      await expect(
+        service.completeEvent(EVENT_ID, CLIENT_ID),
+      ).resolves.toBeDefined();
+      expect(mockWebhook.notify).toHaveBeenCalledWith(
+        CLIENT_ID,
+        'event.completed',
+        expect.anything(),
+        undefined,
+      );
     });
 
     it('throws BadRequestException for DRAFT → COMPLETED', async () => {
       mockPrisma.event.findFirst.mockResolvedValue({ status: 'DRAFT' });
 
-      await expect(service.completeEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(BadRequestException);
+      await expect(service.completeEvent(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('does not fail the request when webhook enqueue fails', async () => {
       mockPrisma.event.findFirst.mockResolvedValue({ status: 'PUBLISHED' });
-      mockPrisma.event.update.mockResolvedValue(baseEvent({ status: 'COMPLETED' }));
+      mockPrisma.event.update.mockResolvedValue(
+        baseEvent({ status: 'COMPLETED' }),
+      );
       mockWebhook.notify.mockRejectedValue(new Error('db down'));
 
-      await expect(service.completeEvent(EVENT_ID, CLIENT_ID)).resolves.toBeDefined();
+      await expect(
+        service.completeEvent(EVENT_ID, CLIENT_ID),
+      ).resolves.toBeDefined();
     });
   });
 
   // ── addParticipant — waitlist logic under row lock ─────────────────────────
 
   describe('addParticipant', () => {
-    const dto = { type: 'INLINE' as const, userName: 'Mario', email: 'mario@example.com' };
+    const dto = {
+      type: 'INLINE' as const,
+      userName: 'Mario',
+      email: 'mario@example.com',
+    };
 
-    beforeEach(() => mockTx.participant.create.mockResolvedValue(baseParticipant()));
+    beforeEach(() =>
+      mockTx.participant.create.mockResolvedValue(baseParticipant()),
+    );
 
     it('locks the event row with FOR UPDATE scoped to the client', async () => {
       lockReturns(null);
@@ -336,9 +596,16 @@ describe('EventService', () => {
 
       expect(mockTx.participant.count).not.toHaveBeenCalled();
       expect(mockTx.participant.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'REGISTERED' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'REGISTERED' }),
+        }),
       );
-      expect(mockWebhook.notify).toHaveBeenCalledWith(CLIENT_ID, 'participant.joined', expect.anything(), undefined);
+      expect(mockWebhook.notify).toHaveBeenCalledWith(
+        CLIENT_ID,
+        'participant.joined',
+        expect.anything(),
+        undefined,
+      );
     });
 
     it('assigns REGISTERED when slots available', async () => {
@@ -348,7 +615,9 @@ describe('EventService', () => {
       await service.addParticipant(EVENT_ID, CLIENT_ID, dto);
 
       expect(mockTx.participant.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'REGISTERED' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'REGISTERED' }),
+        }),
       );
     });
 
@@ -359,16 +628,58 @@ describe('EventService', () => {
       await service.addParticipant(EVENT_ID, CLIENT_ID, dto);
 
       expect(mockTx.participant.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'WAITLIST' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'WAITLIST' }),
+        }),
       );
     });
 
     it('throws NotFoundException when event not found', async () => {
       mockTx.$queryRaw.mockResolvedValue([]);
 
-      await expect(service.addParticipant(EVENT_ID, CLIENT_ID, dto)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.addParticipant(EVENT_ID, CLIENT_ID, dto),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it.each([
+      ['DRAFT', {}],
+      ['CANCELLED', {}],
+      ['COMPLETED', {}],
+      [
+        'PUBLISHED but already started (no endTime)',
+        { startTime: new Date(Date.now() - 60_000) },
+      ],
+      [
+        'PUBLISHED but already ended',
+        {
+          startTime: new Date(Date.now() - 7_200_000),
+          endTime: new Date(Date.now() - 60_000),
+        },
+      ],
+    ])('rejects registration on a %s event', async (label, overrides) => {
+      const status = label.split(' ')[0];
+      lockReturns(null, { status, ...overrides });
+
+      await expect(
+        service.addParticipant(EVENT_ID, CLIENT_ID, dto),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'REGISTRATION_CLOSED' },
+      });
+      expect(mockTx.participant.create).not.toHaveBeenCalled();
+      expect(mockWebhook.notify).not.toHaveBeenCalled();
+    });
+
+    it('accepts registration on a PUBLISHED event in progress (started, endTime ahead)', async () => {
+      lockReturns(null, {
+        startTime: new Date(Date.now() - 60_000),
+        endTime: new Date(Date.now() + 3_600_000),
+      });
+
+      await service.addParticipant(EVENT_ID, CLIENT_ID, dto);
+
+      expect(mockTx.participant.create).toHaveBeenCalled();
     });
 
     it('throws ConflictException on duplicate external participant (P2002)', async () => {
@@ -377,9 +688,12 @@ describe('EventService', () => {
       err.code = 'P2002';
       mockTx.participant.create.mockRejectedValue(err);
 
-      await expect(service.addParticipant(EVENT_ID, CLIENT_ID, dto)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.addParticipant(EVENT_ID, CLIENT_ID, dto),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'ALREADY_REGISTERED' },
+      });
     });
   });
 
@@ -388,68 +702,86 @@ describe('EventService', () => {
   describe('removeParticipant', () => {
     it('marks participant CANCELLED and promotes first waitlisted when capacity allows', async () => {
       lockReturns(2);
-      mockTx.participant.findFirst
-        .mockResolvedValueOnce({ id: PARTICIPANT_ID }) // participant to cancel
-        .mockResolvedValueOnce({ id: 'p-waitlist' }); // first waitlist candidate
-      mockTx.participant.update
-        .mockResolvedValueOnce(baseParticipant({ status: 'CANCELLED' }))
-        .mockResolvedValueOnce(baseParticipant({ id: 'p-waitlist', status: 'REGISTERED' }));
-      mockTx.participant.count.mockResolvedValue(1); // 1 active after cancel → below max
+      mockTx.participant.findFirst.mockResolvedValueOnce({
+        id: PARTICIPANT_ID,
+      });
+      mockTx.participant.update.mockResolvedValueOnce(
+        baseParticipant({ status: 'CANCELLED' }),
+      );
+      mockTx.participant.count.mockResolvedValue(0); // two seats free, but promote only one
+      waitlistReturns('p-waitlist');
 
       await service.removeParticipant(EVENT_ID, CLIENT_ID, PARTICIPANT_ID);
 
       expect(mockTx.participant.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'CANCELLED' } }),
       );
-      expect(mockTx.participant.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'p-waitlist' }, data: { status: 'REGISTERED' } }),
-      );
-      expect(mockWebhook.notify).toHaveBeenCalledWith(CLIENT_ID, 'participant.removed', expect.anything(), undefined);
+      expect(mockTx.participant.findMany.mock.calls[0][0].take).toBe(1);
+      expect(mockTx.participant.updateManyAndReturn).toHaveBeenCalledWith({
+        where: { id: { in: ['p-waitlist'] } },
+        data: { status: 'REGISTERED' },
+      });
       expect(mockWebhook.notify).toHaveBeenCalledWith(
-        CLIENT_ID, 'participant.status_changed', expect.objectContaining({ id: 'p-waitlist' }),
+        CLIENT_ID,
+        'participant.removed',
+        expect.anything(),
+        undefined,
+      );
+      expect(mockWebhook.notify).toHaveBeenCalledWith(
+        CLIENT_ID,
+        'participant.status_changed',
+        [expect.objectContaining({ id: 'p-waitlist' })],
         { previousStatus: 'WAITLIST' },
       );
     });
 
     it('does not promote when no waitlisted participant exists', async () => {
       lockReturns(2);
-      mockTx.participant.findFirst
-        .mockResolvedValueOnce({ id: PARTICIPANT_ID })
-        .mockResolvedValueOnce(null);
-      mockTx.participant.update.mockResolvedValue(baseParticipant({ status: 'CANCELLED' }));
+      mockTx.participant.findFirst.mockResolvedValueOnce({
+        id: PARTICIPANT_ID,
+      });
+      mockTx.participant.update.mockResolvedValue(
+        baseParticipant({ status: 'CANCELLED' }),
+      );
       mockTx.participant.count.mockResolvedValue(1);
+      waitlistReturns();
 
       await service.removeParticipant(EVENT_ID, CLIENT_ID, PARTICIPANT_ID);
 
-      expect(mockTx.participant.update).toHaveBeenCalledTimes(1);
+      expect(mockTx.participant.updateManyAndReturn).not.toHaveBeenCalled();
     });
 
     it('does not promote when active count still at max', async () => {
       lockReturns(2);
-      mockTx.participant.findFirst.mockResolvedValueOnce({ id: PARTICIPANT_ID });
-      mockTx.participant.update.mockResolvedValue(baseParticipant({ status: 'CANCELLED' }));
+      mockTx.participant.findFirst.mockResolvedValueOnce({
+        id: PARTICIPANT_ID,
+      });
+      mockTx.participant.update.mockResolvedValue(
+        baseParticipant({ status: 'CANCELLED' }),
+      );
       mockTx.participant.count.mockResolvedValue(2); // still full
 
       await service.removeParticipant(EVENT_ID, CLIENT_ID, PARTICIPANT_ID);
 
-      expect(mockTx.participant.update).toHaveBeenCalledTimes(1);
+      expect(mockTx.participant.findMany).not.toHaveBeenCalled();
+      expect(mockTx.participant.updateManyAndReturn).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when event not found', async () => {
       mockTx.$queryRaw.mockResolvedValue([]);
 
-      await expect(service.removeParticipant(EVENT_ID, CLIENT_ID, PARTICIPANT_ID)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.removeParticipant(EVENT_ID, CLIENT_ID, PARTICIPANT_ID),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('throws NotFoundException when participant not found', async () => {
       lockReturns(5);
       mockTx.participant.findFirst.mockResolvedValue(null);
 
-      await expect(service.removeParticipant(EVENT_ID, CLIENT_ID, PARTICIPANT_ID)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.removeParticipant(EVENT_ID, CLIENT_ID, PARTICIPANT_ID),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -458,28 +790,47 @@ describe('EventService', () => {
   describe('updateParticipantStatus', () => {
     it('promotes from waitlist when status set to CANCELLED', async () => {
       lockReturns(1);
-      mockTx.participant.findFirst
-        .mockResolvedValueOnce({ status: 'REGISTERED' })
-        .mockResolvedValueOnce({ id: 'p-waitlist' });
-      mockTx.participant.update.mockResolvedValue(baseParticipant({ status: 'CANCELLED' }));
-      mockTx.participant.count.mockResolvedValue(0);
-
-      await service.updateParticipantStatus(PARTICIPANT_ID, EVENT_ID, CLIENT_ID, 'CANCELLED');
-
-      expect(mockTx.participant.update).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'p-waitlist' }, data: { status: 'REGISTERED' } }),
+      mockTx.participant.findFirst.mockResolvedValueOnce({
+        status: 'REGISTERED',
+      });
+      mockTx.participant.update.mockResolvedValue(
+        baseParticipant({ status: 'CANCELLED' }),
       );
+      mockTx.participant.count.mockResolvedValue(0);
+      waitlistReturns('p-waitlist');
+
+      await service.updateParticipantStatus(
+        PARTICIPANT_ID,
+        EVENT_ID,
+        CLIENT_ID,
+        'CANCELLED',
+      );
+
+      expect(mockTx.participant.updateManyAndReturn).toHaveBeenCalledWith({
+        where: { id: { in: ['p-waitlist'] } },
+        data: { status: 'REGISTERED' },
+      });
       expect(mockWebhook.notify).toHaveBeenCalledWith(
-        CLIENT_ID, 'participant.status_changed', expect.anything(), { previousStatus: 'REGISTERED' },
+        CLIENT_ID,
+        'participant.status_changed',
+        expect.anything(),
+        { previousStatus: 'REGISTERED' },
       );
     });
 
     it('does not promote when status set to CONFIRMED', async () => {
       lockReturns(5);
       mockTx.participant.findFirst.mockResolvedValue({ status: 'REGISTERED' });
-      mockTx.participant.update.mockResolvedValue(baseParticipant({ status: 'CONFIRMED' }));
+      mockTx.participant.update.mockResolvedValue(
+        baseParticipant({ status: 'CONFIRMED' }),
+      );
 
-      await service.updateParticipantStatus(PARTICIPANT_ID, EVENT_ID, CLIENT_ID, 'CONFIRMED');
+      await service.updateParticipantStatus(
+        PARTICIPANT_ID,
+        EVENT_ID,
+        CLIENT_ID,
+        'CONFIRMED',
+      );
 
       // REGISTERED → CONFIRMED keeps its seat: no capacity check, no promotion
       expect(mockTx.participant.count).not.toHaveBeenCalled();
@@ -492,18 +843,70 @@ describe('EventService', () => {
       mockTx.participant.count.mockResolvedValue(2);
 
       await expect(
-        service.updateParticipantStatus(PARTICIPANT_ID, EVENT_ID, CLIENT_ID, 'REGISTERED'),
+        service.updateParticipantStatus(
+          PARTICIPANT_ID,
+          EVENT_ID,
+          CLIENT_ID,
+          'REGISTERED',
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'EVENT_FULL' },
+      });
+      expect(mockTx.participant.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects WAITLIST → ATTENDED when the event is full (ATTENDED takes a seat)', async () => {
+      lockReturns(2);
+      mockTx.participant.findFirst.mockResolvedValue({ status: 'WAITLIST' });
+      mockTx.participant.count.mockResolvedValue(2);
+
+      await expect(
+        service.updateParticipantStatus(
+          PARTICIPANT_ID,
+          EVENT_ID,
+          CLIENT_ID,
+          'ATTENDED',
+        ),
       ).rejects.toThrow(ConflictException);
       expect(mockTx.participant.update).not.toHaveBeenCalled();
+    });
+
+    it('counts ATTENDED as active when checking capacity', async () => {
+      lockReturns(2);
+      mockTx.participant.findFirst.mockResolvedValue({ status: 'WAITLIST' });
+      mockTx.participant.count.mockResolvedValue(2);
+
+      await expect(
+        service.updateParticipantStatus(
+          PARTICIPANT_ID,
+          EVENT_ID,
+          CLIENT_ID,
+          'REGISTERED',
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(mockTx.participant.count).toHaveBeenCalledWith({
+        where: {
+          eventId: EVENT_ID,
+          status: { in: ['REGISTERED', 'CONFIRMED', 'ATTENDED'] },
+        },
+      });
     });
 
     it('allows WAITLIST → CONFIRMED when a seat is free', async () => {
       lockReturns(2);
       mockTx.participant.findFirst.mockResolvedValue({ status: 'WAITLIST' });
       mockTx.participant.count.mockResolvedValue(1);
-      mockTx.participant.update.mockResolvedValue(baseParticipant({ status: 'CONFIRMED' }));
+      mockTx.participant.update.mockResolvedValue(
+        baseParticipant({ status: 'CONFIRMED' }),
+      );
 
-      await service.updateParticipantStatus(PARTICIPANT_ID, EVENT_ID, CLIENT_ID, 'CONFIRMED');
+      await service.updateParticipantStatus(
+        PARTICIPANT_ID,
+        EVENT_ID,
+        CLIENT_ID,
+        'CONFIRMED',
+      );
 
       expect(mockTx.participant.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'CONFIRMED' } }),
@@ -517,7 +920,9 @@ describe('EventService', () => {
     beforeEach(() => {
       mockTx.participant.findMany.mockResolvedValue([]);
       mockTx.participant.count.mockResolvedValue(0);
-      mockTx.participant.createManyAndReturn.mockImplementation(async ({ data }: any) => data);
+      mockTx.participant.createManyAndReturn.mockImplementation(
+        async ({ data }: any) => data,
+      );
     });
 
     it('returns correct added/waitlisted counts with a single insert', async () => {
@@ -530,45 +935,92 @@ describe('EventService', () => {
         ],
       } as any);
 
-      expect(result).toEqual({ added: 1, waitlisted: 1, skipped: 0, errors: [] });
+      expect(result).toEqual({
+        added: 1,
+        waitlisted: 1,
+        skipped: 0,
+        errors: [],
+      });
       expect(mockTx.participant.createManyAndReturn).toHaveBeenCalledTimes(1);
       const rows = mockTx.participant.createManyAndReturn.mock.calls[0][0].data;
-      expect(rows.map((r: any) => r.status)).toEqual(['REGISTERED', 'WAITLIST']);
+      expect(rows.map((r: any) => r.status)).toEqual([
+        'REGISTERED',
+        'WAITLIST',
+      ]);
       expect(mockWebhook.notify).toHaveBeenCalledWith(
-        CLIENT_ID, 'participant.joined', expect.arrayContaining([expect.anything()]), undefined,
+        CLIENT_ID,
+        'participant.joined',
+        expect.arrayContaining([expect.anything()]),
+        undefined,
       );
     });
 
     it('skips duplicates already registered and repeated within the batch', async () => {
       lockReturns(null);
-      mockTx.participant.findMany.mockResolvedValue([{ externalId: 'ext-1', externalSource: 'discord' }]);
+      mockTx.participant.findMany.mockResolvedValue([
+        { externalId: 'ext-1', externalSource: 'discord' },
+      ]);
 
       const result = await service.addParticipantsBulk(EVENT_ID, CLIENT_ID, {
         skipDuplicates: true,
         participants: [
-          { type: 'EXTERNAL', userName: 'A', externalId: 'ext-1', externalSource: 'discord' },
-          { type: 'EXTERNAL', userName: 'B', externalId: 'ext-2', externalSource: 'discord' },
-          { type: 'EXTERNAL', userName: 'B2', externalId: 'ext-2', externalSource: 'discord' },
-          { type: 'EXTERNAL', userName: 'C', externalId: 'ext-2', externalSource: 'steam' },
+          {
+            type: 'EXTERNAL',
+            userName: 'A',
+            externalId: 'ext-1',
+            externalSource: 'discord',
+          },
+          {
+            type: 'EXTERNAL',
+            userName: 'B',
+            externalId: 'ext-2',
+            externalSource: 'discord',
+          },
+          {
+            type: 'EXTERNAL',
+            userName: 'B2',
+            externalId: 'ext-2',
+            externalSource: 'discord',
+          },
+          {
+            type: 'EXTERNAL',
+            userName: 'C',
+            externalId: 'ext-2',
+            externalSource: 'steam',
+          },
         ],
       } as any);
 
-      expect(result).toEqual({ added: 2, waitlisted: 0, skipped: 2, errors: [] });
+      expect(result).toEqual({
+        added: 2,
+        waitlisted: 0,
+        skipped: 2,
+        errors: [],
+      });
       expect(mockTx.participant.findMany).toHaveBeenCalledTimes(1);
     });
 
     it('records error for duplicate EXTERNAL when skipDuplicates=false', async () => {
       lockReturns(null);
-      mockTx.participant.findMany.mockResolvedValue([{ externalId: 'ext-1', externalSource: 'discord' }]);
+      mockTx.participant.findMany.mockResolvedValue([
+        { externalId: 'ext-1', externalSource: 'discord' },
+      ]);
 
       const result = await service.addParticipantsBulk(EVENT_ID, CLIENT_ID, {
         skipDuplicates: false,
         participants: [
-          { type: 'EXTERNAL', userName: 'A', externalId: 'ext-1', externalSource: 'discord' },
+          {
+            type: 'EXTERNAL',
+            userName: 'A',
+            externalId: 'ext-1',
+            externalSource: 'discord',
+          },
         ],
       } as any);
 
-      expect(result.errors).toEqual([{ index: 0, reason: 'Already registered' }]);
+      expect(result.errors).toEqual([
+        { index: 0, reason: 'Already registered' },
+      ]);
       expect(mockTx.participant.createManyAndReturn).not.toHaveBeenCalled();
     });
 
@@ -576,35 +1028,101 @@ describe('EventService', () => {
       mockTx.$queryRaw.mockResolvedValue([]);
 
       await expect(
-        service.addParticipantsBulk(EVENT_ID, CLIENT_ID, { participants: [] } as any),
+        service.addParticipantsBulk(EVENT_ID, CLIENT_ID, {
+          participants: [],
+        } as any),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects the whole batch when the event is not open for registration', async () => {
+      lockReturns(null, { status: 'COMPLETED' });
+
+      await expect(
+        service.addParticipantsBulk(EVENT_ID, CLIENT_ID, {
+          participants: [{ type: 'INLINE', userName: 'A' }],
+        } as any),
+      ).rejects.toThrow(ConflictException);
+      expect(mockTx.participant.createManyAndReturn).not.toHaveBeenCalled();
     });
   });
 
   // ── checkInParticipant ────────────────────────────────────────────────────
 
   describe('checkInParticipant', () => {
-    it('sets checkedIn=true, checkedInAt, status=ATTENDED', async () => {
-      mockPrisma.participant.findFirst.mockResolvedValue({ id: PARTICIPANT_ID });
-      mockPrisma.participant.update.mockResolvedValue(
-        baseParticipant({ checkedIn: true, status: 'ATTENDED' }),
-      );
+    it.each(['REGISTERED', 'CONFIRMED'])(
+      'checks in a %s participant under the event lock',
+      async (status) => {
+        lockReturns(5);
+        mockTx.participant.findFirst.mockResolvedValue(
+          baseParticipant({ status }),
+        );
+        mockTx.participant.update.mockResolvedValue(
+          baseParticipant({ checkedIn: true, status: 'ATTENDED' }),
+        );
 
-      await service.checkInParticipant(PARTICIPANT_ID, EVENT_ID, CLIENT_ID);
+        await service.checkInParticipant(PARTICIPANT_ID, EVENT_ID, CLIENT_ID);
 
-      expect(mockPrisma.participant.findFirst.mock.calls[0][0].where).toEqual({
-        id: PARTICIPANT_ID, eventId: EVENT_ID, event: { clientId: CLIENT_ID },
-      });
-      expect(mockPrisma.participant.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ checkedIn: true, status: 'ATTENDED' }),
-        }),
-      );
-      expect(mockWebhook.notify).toHaveBeenCalledWith(CLIENT_ID, 'participant.checked_in', expect.anything(), undefined);
+        const [, ...lockValues] = mockTx.$queryRaw.mock.calls[0];
+        expect(lockValues).toEqual([EVENT_ID, CLIENT_ID]);
+        expect(mockTx.participant.findFirst.mock.calls[0][0].where).toEqual({
+          id: PARTICIPANT_ID,
+          eventId: EVENT_ID,
+        });
+        expect(mockTx.participant.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              checkedIn: true,
+              status: 'ATTENDED',
+            }),
+          }),
+        );
+        expect(mockWebhook.notify).toHaveBeenCalledWith(
+          CLIENT_ID,
+          'participant.checked_in',
+          expect.anything(),
+          undefined,
+        );
+      },
+    );
+
+    it('is idempotent for an ATTENDED participant — no write, no webhook', async () => {
+      lockReturns(5);
+      const attended = baseParticipant({ checkedIn: true, status: 'ATTENDED' });
+      mockTx.participant.findFirst.mockResolvedValue(attended);
+
+      await expect(
+        service.checkInParticipant(PARTICIPANT_ID, EVENT_ID, CLIENT_ID),
+      ).resolves.toBe(attended);
+      expect(mockTx.participant.update).not.toHaveBeenCalled();
+      expect(mockWebhook.notify).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException when participant (or event of this client) not found', async () => {
-      mockPrisma.participant.findFirst.mockResolvedValue(null);
+    it.each(['WAITLIST', 'CANCELLED'])(
+      'refuses to check in a %s participant',
+      async (status) => {
+        lockReturns(5);
+        mockTx.participant.findFirst.mockResolvedValue(
+          baseParticipant({ status }),
+        );
+
+        await expect(
+          service.checkInParticipant(PARTICIPANT_ID, EVENT_ID, CLIENT_ID),
+        ).rejects.toThrow(ConflictException);
+        expect(mockTx.participant.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('throws NotFoundException when the event belongs to another client', async () => {
+      mockTx.$queryRaw.mockResolvedValue([]);
+
+      await expect(
+        service.checkInParticipant(PARTICIPANT_ID, EVENT_ID, CLIENT_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException when participant not found', async () => {
+      lockReturns(5);
+      mockTx.participant.findFirst.mockResolvedValue(null);
 
       await expect(
         service.checkInParticipant(PARTICIPANT_ID, EVENT_ID, CLIENT_ID),
@@ -616,7 +1134,9 @@ describe('EventService', () => {
 
   describe('getEventStats', () => {
     it('returns correct participant counts from a groupBy', async () => {
-      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ maxParticipants: 5 }));
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ maxParticipants: 5 }),
+      );
       mockPrisma.participant.groupBy.mockResolvedValue([
         { status: 'REGISTERED', _count: { _all: 2 } },
         { status: 'CONFIRMED', _count: { _all: 1 } },
@@ -636,12 +1156,14 @@ describe('EventService', () => {
         cancelled: 1,
         attended: 1,
         checkedIn: 1,
-        availableSpots: 2, // 5 max - 3 active (registered + confirmed)
+        availableSpots: 1, // 5 max - 4 active (registered + confirmed + attended)
       });
     });
 
     it('returns null availableSpots when maxParticipants not set', async () => {
-      mockPrisma.event.findFirst.mockResolvedValue(baseEvent({ maxParticipants: null }));
+      mockPrisma.event.findFirst.mockResolvedValue(
+        baseEvent({ maxParticipants: null }),
+      );
       mockPrisma.participant.groupBy.mockResolvedValue([]);
       mockPrisma.participant.count.mockResolvedValue(0);
 
@@ -654,7 +1176,9 @@ describe('EventService', () => {
     it('throws NotFoundException when event not found', async () => {
       mockPrisma.event.findFirst.mockResolvedValue(null);
 
-      await expect(service.getEventStats(EVENT_ID, CLIENT_ID)).rejects.toThrow(NotFoundException);
+      await expect(service.getEventStats(EVENT_ID, CLIENT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -664,11 +1188,14 @@ describe('EventService', () => {
     it('only marks past children COMPLETED under an advisory lock — never deletes', async () => {
       await service.cleanupPastEvents();
 
-      expect(mockPrisma.withAdvisoryLock).toHaveBeenCalledWith('events.cleanupPastEvents', expect.any(Function));
+      expect(mockPrisma.withAdvisoryLock).toHaveBeenCalledWith(
+        'events.cleanupPastEvents',
+        expect.any(Function),
+      );
       expect(mockTx.event.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'COMPLETED' } }),
       );
-      expect((mockTx.event as any).deleteMany).toBeUndefined();
+      expect(mockTx.event.deleteMany).not.toHaveBeenCalled();
     });
   });
 });
@@ -702,7 +1229,11 @@ describe('parseRecurrenceRule', () => {
 
 describe('EventService.createEvent recurrence', () => {
   it('rejects a bad rule before any DB write', async () => {
-    const service = new EventService(mockPrisma as any, mockAudit as any, mockWebhook as any);
+    const service = new EventService(
+      mockPrisma as any,
+      mockAudit as any,
+      mockWebhook as any,
+    );
     jest.clearAllMocks();
     await expect(
       service.createEvent(CLIENT_ID, {
@@ -716,7 +1247,11 @@ describe('EventService.createEvent recurrence', () => {
   });
 
   it('generates at most recurrenceCount instances within 2 years', async () => {
-    const service = new EventService(mockPrisma as any, mockAudit as any, mockWebhook as any);
+    const service = new EventService(
+      mockPrisma as any,
+      mockAudit as any,
+      mockWebhook as any,
+    );
     jest.clearAllMocks();
     const start = new Date(Date.now() + 86_400_000);
     await (service as any).generateRecurringInstances(
@@ -730,6 +1265,8 @@ describe('EventService.createEvent recurrence', () => {
     );
     const rows = mockTx.event.createMany.mock.calls[0][0].data;
     expect(rows.length).toBe(399); // cap counts the parent occurrence
-    expect(rows.at(-1).startTime.getTime() - start.getTime()).toBeLessThanOrEqual(2 * 365 * 86_400_000);
+    expect(
+      rows.at(-1).startTime.getTime() - start.getTime(),
+    ).toBeLessThanOrEqual(2 * 365 * 86_400_000);
   });
 });

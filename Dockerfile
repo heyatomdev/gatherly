@@ -42,7 +42,11 @@ RUN groupadd -g 1001 app && useradd -u 1001 -g app -m app
 # Install runtime dependencies for Sharp image processing
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libvips-dev && \
+    apt-get upgrade -y --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
+
+# Remove npm (not needed at runtime; its bundled deps carry CVEs)
+RUN npm uninstall -g npm corepack
 
 # Copy built artifacts and dependencies from builder with ownership set during copy
 COPY --chown=app:app package.json pnpm-lock.yaml ./

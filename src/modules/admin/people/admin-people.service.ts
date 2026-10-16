@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/modules/prisma/prisma.service';
+import { paginate } from '@heyatom/nest-common';
 import { PeopleQueryDto } from './dto/people-query.dto';
 
 @Injectable()
@@ -28,10 +33,10 @@ export class AdminPeopleService {
   }
 
   async listPeople(clientId: string, query: PeopleQueryDto) {
-    const { search, segment, minEvents = 1, page = 1, limit = 20 } = query;
-    const offset = (page - 1) * limit;
-    const vipThreshold = this.config.get<number>('VIP_THRESHOLD') ?? 5;
-    const atRiskDays = this.config.get<number>('AT_RISK_DAYS') ?? 120;
+    const { search, segment, minEvents = 1, limit } = query;
+    const offset = query.skip;
+    const vipThreshold = this.config.getOrThrow<number>('VIP_THRESHOLD');
+    const atRiskDays = this.config.getOrThrow<number>('AT_RISK_DAYS');
 
     const searchFilter = search
       ? Prisma.sql`AND (agg.display_name ILIKE ${`%${search}%`} OR agg.email ILIKE ${`%${search}%`})`
@@ -115,12 +120,14 @@ export class AdminPeopleService {
 
     const total = rows[0]?.total_count ?? 0;
 
-    return {
-      data: rows.map((r) => ({
+    return paginate(
+      rows.map((r) => ({
         key: r.key,
         displayName: r.display_name,
         email: r.email,
-        external: r.external_id ? { source: r.external_source, id: r.external_id } : null,
+        external: r.external_id
+          ? { source: r.external_source, id: r.external_id }
+          : null,
         eventsCount: r.events_count,
         firstSeen: r.first_seen,
         lastSeen: r.last_seen,
@@ -128,35 +135,32 @@ export class AdminPeopleService {
         noShowCount: r.no_show_count,
         segment: r.segment,
       })),
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+      total,
+      query,
+    );
   }
 
   async getPersonProfile(clientId: string, key: string) {
     const predicate = this.buildKeyPredicate(key);
-    const vipThreshold = this.config.get<number>('VIP_THRESHOLD') ?? 5;
-    const atRiskDays = this.config.get<number>('AT_RISK_DAYS') ?? 120;
+    const vipThreshold = this.config.getOrThrow<number>('VIP_THRESHOLD');
+    const atRiskDays = this.config.getOrThrow<number>('AT_RISK_DAYS');
 
-    const [summaryRows, historyRows, topCategories, topTags] = await Promise.all([
-      this.prisma.$queryRaw<
-        Array<{
-          display_name: string;
-          email: string | null;
-          external_id: string | null;
-          external_source: string | null;
-          events_count: number;
-          first_seen: Date;
-          last_seen: Date;
-          checked_in_count: number;
-          no_show_count: number;
-          segment: string;
-        }>
-      >`
+    const [summaryRows, historyRows, topCategories, topTags] =
+      await Promise.all([
+        this.prisma.$queryRaw<
+          Array<{
+            display_name: string;
+            email: string | null;
+            external_id: string | null;
+            external_source: string | null;
+            events_count: number;
+            first_seen: Date;
+            last_seen: Date;
+            checked_in_count: number;
+            no_show_count: number;
+            segment: string;
+          }>
+        >`
         WITH people AS (
           SELECT
             p."userName",
@@ -194,15 +198,15 @@ export class AdminPeopleService {
           END AS segment
         FROM people
       `,
-      this.prisma.$queryRaw<
-        Array<{
-          event_id: string;
-          title: string | null;
-          start_time: Date;
-          status: string;
-          checked_in: boolean;
-        }>
-      >`
+        this.prisma.$queryRaw<
+          Array<{
+            event_id: string;
+            title: string | null;
+            start_time: Date;
+            status: string;
+            checked_in: boolean;
+          }>
+        >`
         SELECT
           e.id AS event_id,
           (SELECT t.title FROM event_translations t WHERE t."eventId" = e.id LIMIT 1) AS title,
@@ -214,7 +218,13 @@ export class AdminPeopleService {
         WHERE e."clientId" = ${clientId} AND ${predicate}
         ORDER BY e."startTime" DESC
       `,
-      this.prisma.$queryRaw<Array<{ category_id: string | null; name: string | null; frequency: number }>>`
+        this.prisma.$queryRaw<
+          Array<{
+            category_id: string | null;
+            name: string | null;
+            frequency: number;
+          }>
+        >`
         SELECT
           e."categoryId" AS category_id,
           (SELECT t.name FROM event_category_translations t
@@ -229,7 +239,9 @@ export class AdminPeopleService {
         ORDER BY frequency DESC
         LIMIT 5
       `,
-      this.prisma.$queryRaw<Array<{ id: string; slug: string; frequency: number }>>`
+        this.prisma.$queryRaw<
+          Array<{ id: string; slug: string; frequency: number }>
+        >`
         SELECT t.id, t.slug, count(*)::int AS frequency
         FROM participants p
         JOIN events e ON e.id = p."eventId"
@@ -240,16 +252,19 @@ export class AdminPeopleService {
         ORDER BY frequency DESC
         LIMIT 5
       `,
-    ]);
+      ]);
 
     const s = summaryRows[0];
-    if (!s || s.events_count === 0) throw new NotFoundException(`Person not found: ${key}`);
+    if (!s || s.events_count === 0)
+      throw new NotFoundException(`Person not found: ${key}`);
 
     return {
       key,
       displayName: s.display_name,
       email: s.email,
-      external: s.external_id ? { source: s.external_source, id: s.external_id } : null,
+      external: s.external_id
+        ? { source: s.external_source, id: s.external_id }
+        : null,
       eventsCount: s.events_count,
       firstSeen: s.first_seen,
       lastSeen: s.last_seen,
@@ -268,7 +283,11 @@ export class AdminPeopleService {
         name: c.name,
         frequency: c.frequency,
       })),
-      topTags: topTags.map((t) => ({ id: t.id, slug: t.slug, frequency: t.frequency })),
+      topTags: topTags.map((t) => ({
+        id: t.id,
+        slug: t.slug,
+        frequency: t.frequency,
+      })),
     };
   }
 }

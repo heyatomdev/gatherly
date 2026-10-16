@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/modules/prisma/prisma.service';
-import { getAppVersion } from '@/common/app-version';
+import { APP_VERSION } from '@/common/app-version';
 import { BreakdownBy, TimeseriesMetric } from './dto/analytics-query.dto';
 
 /** Length of the forward-looking series behind the `upcoming` figure. Two weeks
@@ -22,7 +22,9 @@ export class AdminAnalyticsService {
       };
     }
 
-    const fromClause = from ? Prisma.sql`AND e."startTime" >= ${from}` : Prisma.empty;
+    const fromClause = from
+      ? Prisma.sql`AND e."startTime" >= ${from}`
+      : Prisma.empty;
     const toClause = to ? Prisma.sql`AND e."startTime" <= ${to}` : Prisma.empty;
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -49,7 +51,12 @@ export class AdminAnalyticsService {
         _count: true,
       }),
       this.prisma.event.count({
-        where: { clientId, status: 'PUBLISHED', startTime: { gt: now }, ...timeFilter },
+        where: {
+          clientId,
+          status: 'PUBLISHED',
+          startTime: { gt: now },
+          ...timeFilter,
+        },
       }),
       // Forward-looking, and deliberately NOT narrowed by `from`/`to`: the
       // window is "the next N days", not the slice the caller is inspecting.
@@ -65,7 +72,9 @@ export class AdminAnalyticsService {
         GROUP BY 1
         ORDER BY 1
       `,
-      this.prisma.$queryRaw<Array<{ total: number; active: number; checked_in: number }>>`
+      this.prisma.$queryRaw<
+        Array<{ total: number; active: number; checked_in: number }>
+      >`
         SELECT
           count(*)::int AS total,
           count(*) FILTER (WHERE p.status != 'CANCELLED')::int AS active,
@@ -76,14 +85,16 @@ export class AdminAnalyticsService {
         ${fromClause}
         ${toClause}
       `,
-      this.prisma.$queryRaw<Array<{
-        avg_fill_rate: number | null;
-        checkin_rate: number | null;
-        no_show_rate: number | null;
-      }>>`
+      this.prisma.$queryRaw<
+        Array<{
+          avg_fill_rate: number | null;
+          checkin_rate: number | null;
+          no_show_rate: number | null;
+        }>
+      >`
         SELECT
           AVG(CASE WHEN "maxParticipants" IS NOT NULL AND "maxParticipants" > 0
-            THEN confirmed_count::float / "maxParticipants" ELSE NULL END) AS avg_fill_rate,
+            THEN seated_count::float / "maxParticipants" ELSE NULL END) AS avg_fill_rate,
           SUM(checked_in_count)::float / NULLIF(SUM(active_count), 0) AS checkin_rate,
           1 - SUM(CASE WHEN status = 'COMPLETED' THEN checked_in_count ELSE 0 END)::float
             / NULLIF(SUM(CASE WHEN status = 'COMPLETED' THEN active_count ELSE 0 END), 0) AS no_show_rate
@@ -92,7 +103,8 @@ export class AdminAnalyticsService {
             e.id,
             e."maxParticipants",
             e.status,
-            count(*) FILTER (WHERE p.status IN ('CONFIRMED', 'ATTENDED'))::int AS confirmed_count,
+            -- seats taken, same set as EventService ACTIVE_STATUSES
+            count(*) FILTER (WHERE p.status IN ('REGISTERED', 'CONFIRMED', 'ATTENDED'))::int AS seated_count,
             count(*) FILTER (WHERE p.status NOT IN ('CANCELLED', 'WAITLIST'))::int AS active_count,
             count(*) FILTER (WHERE p."checkedIn")::int AS checked_in_count
           FROM events e
@@ -111,7 +123,7 @@ export class AdminAnalyticsService {
           AND e."maxParticipants" IS NOT NULL
           AND (
             SELECT count(*) FROM participants p
-            WHERE p."eventId" = e.id AND p.status IN ('CONFIRMED', 'ATTENDED')
+            WHERE p."eventId" = e.id AND p.status IN ('REGISTERED', 'CONFIRMED', 'ATTENDED')
           ) >= e."maxParticipants"
           AND (
             SELECT count(*) FROM participants p
@@ -130,7 +142,11 @@ export class AdminAnalyticsService {
     for (const s of byStatus) statusMap[s.status] = s._count;
 
     const p = participantStats[0] ?? { total: 0, active: 0, checked_in: 0 };
-    const r = rateStats[0] ?? { avg_fill_rate: null, checkin_rate: null, no_show_rate: null };
+    const r = rateStats[0] ?? {
+      avg_fill_rate: null,
+      checkin_rate: null,
+      no_show_rate: null,
+    };
 
     return {
       events: {
@@ -162,19 +178,29 @@ export class AdminAnalyticsService {
           upcomingDailyRows,
         ),
       },
-      version: getAppVersion(),
+      version: APP_VERSION,
     };
   }
 
-  async timeseries(clientId: string, metric: string, interval: string, from?: Date, to?: Date) {
+  async timeseries(
+    clientId: string,
+    metric: string,
+    interval: string,
+    from?: Date,
+    to?: Date,
+  ) {
     const validIntervals = ['day', 'week', 'month'];
     const trunc = validIntervals.includes(interval) ? interval : 'month';
 
-    const fromClause = from ? Prisma.sql`AND e."startTime" >= ${from}` : Prisma.empty;
+    const fromClause = from
+      ? Prisma.sql`AND e."startTime" >= ${from}`
+      : Prisma.empty;
     const toClause = to ? Prisma.sql`AND e."startTime" <= ${to}` : Prisma.empty;
 
     if (metric === TimeseriesMetric.PARTICIPANTS) {
-      const rows = await this.prisma.$queryRaw<Array<{ bucket: Date; value: number }>>`
+      const rows = await this.prisma.$queryRaw<
+        Array<{ bucket: Date; value: number }>
+      >`
         SELECT date_trunc(${trunc}, p."createdAt") AS bucket, count(*)::int AS value
         FROM participants p
         JOIN events e ON e.id = p."eventId"
@@ -186,7 +212,9 @@ export class AdminAnalyticsService {
       return { metric, interval: trunc, data: rows };
     }
 
-    const rows = await this.prisma.$queryRaw<Array<{ bucket: Date; value: number }>>`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ bucket: Date; value: number }>
+    >`
       SELECT date_trunc(${trunc}, e."startTime") AS bucket, count(*)::int AS value
       FROM events e
       WHERE e."clientId" = ${clientId}
@@ -204,11 +232,16 @@ export class AdminAnalyticsService {
         where: { clientId },
         _count: true,
       });
-      return { by, data: rows.map((r) => ({ label: r.status, count: r._count })) };
+      return {
+        by,
+        data: rows.map((r) => ({ label: r.status, count: r._count })),
+      };
     }
 
     if (by === BreakdownBy.CATEGORY) {
-      const rows = await this.prisma.$queryRaw<Array<{ id: string | null; name: string | null; count: number }>>`
+      const rows = await this.prisma.$queryRaw<
+        Array<{ id: string | null; name: string | null; count: number }>
+      >`
         SELECT
           e."categoryId" AS id,
           (SELECT t.name FROM event_category_translations t
@@ -223,7 +256,9 @@ export class AdminAnalyticsService {
     }
 
     if (by === BreakdownBy.TAG) {
-      const rows = await this.prisma.$queryRaw<Array<{ id: string; slug: string; count: number }>>`
+      const rows = await this.prisma.$queryRaw<
+        Array<{ id: string; slug: string; count: number }>
+      >`
         SELECT t.id, t.slug, count(et."eventId")::int AS count
         FROM tags t
         LEFT JOIN event_tags et ON et."tagId" = t.id
@@ -244,7 +279,12 @@ export class AdminAnalyticsService {
     cutoff.setMonth(cutoff.getMonth() - months);
 
     const rows = await this.prisma.$queryRaw<
-      Array<{ cohort: Date; cohort_size: number; event_period: Date; active: number }>
+      Array<{
+        cohort: Date;
+        cohort_size: number;
+        event_period: Date;
+        active: number;
+      }>
     >`
       WITH person_events AS (
         SELECT
@@ -291,20 +331,26 @@ export class AdminAnalyticsService {
     for (const row of rows) {
       const cohortKey = row.cohort.toISOString().slice(0, 7);
       if (!cohortMap.has(cohortKey)) {
-        cohortMap.set(cohortKey, { cohort: cohortKey, size: row.cohort_size, periods: new Map() });
+        cohortMap.set(cohortKey, {
+          cohort: cohortKey,
+          size: row.cohort_size,
+          periods: new Map(),
+        });
       }
       const periodKey = row.event_period.toISOString().slice(0, 7);
       cohortMap.get(cohortKey)!.periods.set(periodKey, row.active);
     }
 
-    const cohorts = Array.from(cohortMap.values()).map(({ cohort, size, periods }) => {
-      const sortedPeriods = Array.from(periods.keys()).sort();
-      const retention = sortedPeriods.map((pk) => {
-        const active = periods.get(pk) ?? 0;
-        return Math.round((active / size) * 100) / 100;
-      });
-      return { cohort, size, retention };
-    });
+    const cohorts = Array.from(cohortMap.values()).map(
+      ({ cohort, size, periods }) => {
+        const sortedPeriods = Array.from(periods.keys()).sort();
+        const retention = sortedPeriods.map((pk) => {
+          const active = periods.get(pk) ?? 0;
+          return Math.round((active / size) * 100) / 100;
+        });
+        return { cohort, size, retention };
+      },
+    );
 
     return { granularity: trunc, cohorts };
   }

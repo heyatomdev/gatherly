@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTagDto, UpdateTagDto } from './dto/tag.dto';
 
@@ -9,28 +9,26 @@ export class TagService {
   async createTag(clientId: string, data: CreateTagDto) {
     const slug = data.slug.toLowerCase().trim();
 
-    try {
-      return await this.prisma.tag.create({
-        data: { clientId, slug, label: data.label },
-      });
-    } catch (error: any) {
-      if (error.code === 'P2002') {
-        throw new ConflictException(`Tag "${slug}" already exists for this client`);
-      }
-      throw error;
-    }
+    // Duplicate slug → P2002 → 409 CONFLICT via AllExceptionsFilter.
+    return this.prisma.tag.create({
+      data: { clientId, slug, label: data.label },
+    });
   }
 
   async getTagsByClient(clientId: string, withUsage = false) {
     return this.prisma.tag.findMany({
       where: { clientId },
       orderBy: { slug: 'asc' },
-      ...(withUsage ? { include: { _count: { select: { events: true } } } } : {}),
+      ...(withUsage
+        ? { include: { _count: { select: { events: true } } } }
+        : {}),
     });
   }
 
   async getTagById(tagId: string, clientId: string) {
-    const tag = await this.prisma.tag.findFirst({ where: { id: tagId, clientId } });
+    const tag = await this.prisma.tag.findFirst({
+      where: { id: tagId, clientId },
+    });
     if (!tag) throw new NotFoundException(`Tag ${tagId} not found`);
     return tag;
   }

@@ -14,6 +14,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
+import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { EventService } from './event.service';
 import { IdempotencyInterceptor } from '@/common/idempotency.interceptor';
 import {
@@ -35,13 +36,20 @@ export class EventController {
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Create event with translations and optional tags' })
-  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID from caller — retries return cached response' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'UUID from caller — retries return cached response',
+  })
   async createEvent(@Request() req, @Body() dto: CreateEventDto) {
     return this.eventService.createEvent(req.client.id, dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List events for client with optional filters and pagination' })
+  @ApiPaginatedResponse()
+  @ApiOperation({
+    summary: 'List events for client with optional filters and pagination',
+  })
   async getEvents(@Request() req, @Query() query: GetEventsQueryDto) {
     return this.eventService.getEventsByClient(req.client.id, query);
   }
@@ -57,6 +65,7 @@ export class EventController {
   }
 
   @Get(':eventId/participants')
+  @ApiPaginatedResponse()
   @ApiOperation({ summary: 'List participants with filters and pagination' })
   async getParticipants(
     @Request() req,
@@ -67,7 +76,10 @@ export class EventController {
   }
 
   @Patch(':eventId')
-  @ApiOperation({ summary: 'Update event — pass translations to upsert, tagSlugs to replace all tags' })
+  @ApiOperation({
+    summary:
+      'Update event — pass translations to upsert, tagSlugs to replace all tags',
+  })
   async updateEvent(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -78,7 +90,10 @@ export class EventController {
 
   @Put(':eventId/publish')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Publish event — validates required fields, transitions DRAFT → PUBLISHED' })
+  @ApiOperation({
+    summary:
+      'Publish event — validates required fields, transitions DRAFT → PUBLISHED',
+  })
   async publishEvent(@Request() req, @Param('eventId') eventId: string) {
     return this.eventService.publishEvent(eventId, req.client.id);
   }
@@ -91,7 +106,10 @@ export class EventController {
 
   @Put(':eventId/cancel')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel event — blocks further status changes. Cancels future recurring children.' })
+  @ApiOperation({
+    summary:
+      'Cancel event — blocks further status changes. Cancels future recurring children.',
+  })
   async cancelEvent(@Request() req, @Param('eventId') eventId: string) {
     return this.eventService.cancelEvent(eventId, req.client.id);
   }
@@ -99,8 +117,15 @@ export class EventController {
   @Post(':eventId/participants')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'Add participant — INLINE (direct data) or EXTERNAL (externalId + externalSource)' })
-  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'UUID from caller — retries return cached response' })
+  @ApiOperation({
+    summary:
+      'Add participant — INLINE (direct data) or EXTERNAL (externalId + externalSource)',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'UUID from caller — retries return cached response',
+  })
   async addParticipant(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -111,7 +136,16 @@ export class EventController {
 
   @Post(':eventId/participants/bulk')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Add multiple participants in one request. Returns counts of added/waitlisted/skipped/errors.' })
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiOperation({
+    summary:
+      'Add multiple participants in one request. Returns counts of added/waitlisted/skipped/errors.',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'UUID from caller — retries return cached response',
+  })
   async addParticipantsBulk(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -141,17 +175,28 @@ export class EventController {
     @Param('eventId') eventId: string,
     @Param('participantId') participantId: string,
   ) {
-    return this.eventService.checkInParticipant(participantId, eventId, req.client.id);
+    return this.eventService.checkInParticipant(
+      participantId,
+      eventId,
+      req.client.id,
+    );
   }
 
   @Delete(':eventId/participants/:participantId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Cancel participant by participantId (marks as CANCELLED, promotes waitlist)' })
+  @ApiOperation({
+    summary:
+      'Cancel participant by participantId (marks as CANCELLED, promotes waitlist)',
+  })
   async removeParticipant(
     @Request() req,
     @Param('eventId') eventId: string,
     @Param('participantId') participantId: string,
   ) {
-    return this.eventService.removeParticipant(eventId, req.client.id, participantId);
+    return this.eventService.removeParticipant(
+      eventId,
+      req.client.id,
+      participantId,
+    );
   }
 }

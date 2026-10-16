@@ -1,18 +1,32 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(PrismaService.name);
 
   constructor(config: ConfigService) {
     const adapter = new PrismaPg({
       connectionString: config.get<string>('DATABASE_URL'),
       max: config.get<number>('DATABASE_POOL_MAX', 10),
-      connectionTimeoutMillis: config.get<number>('DATABASE_CONNECTION_TIMEOUT_MS', 5_000),
-      statement_timeout: config.get<number>('DATABASE_STATEMENT_TIMEOUT_MS', 30_000),
+      connectionTimeoutMillis: config.get<number>(
+        'DATABASE_CONNECTION_TIMEOUT_MS',
+        5_000,
+      ),
+      statement_timeout: config.get<number>(
+        'DATABASE_STATEMENT_TIMEOUT_MS',
+        30_000,
+      ),
     });
     super({ adapter });
   }
@@ -44,7 +58,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$connect();
       this.logger.log('Database connected successfully');
     } catch (error) {
-      this.logger.error('Failed to connect to database', error instanceof Error ? error.stack : error);
+      this.logger.error(
+        'Failed to connect to database',
+        error instanceof Error ? error.stack : error,
+      );
       throw error;
     }
   }
@@ -54,7 +71,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$disconnect();
       this.logger.log('Database disconnected successfully');
     } catch (error) {
-      this.logger.error('Failed to disconnect from database', error instanceof Error ? error.stack : error);
+      this.logger.error(
+        'Failed to disconnect from database',
+        error instanceof Error ? error.stack : error,
+      );
       throw error;
     }
   }

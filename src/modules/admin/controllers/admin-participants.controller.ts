@@ -14,6 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { EventService } from '@/modules/events/event.service';
@@ -32,6 +33,7 @@ export class AdminParticipantsController {
   constructor(private readonly events: EventService) {}
 
   @Get()
+  @ApiPaginatedResponse()
   list(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -67,7 +69,12 @@ export class AdminParticipantsController {
     @Param('participantId') participantId: string,
     @Body() body: UpdateParticipantStatusDto,
   ) {
-    return this.events.updateParticipantStatus(participantId, eventId, req.adminClient.id, body.status);
+    return this.events.updateParticipantStatus(
+      participantId,
+      eventId,
+      req.adminClient.id,
+      body.status,
+    );
   }
 
   @Put(':participantId/checkin')
@@ -77,7 +84,11 @@ export class AdminParticipantsController {
     @Param('eventId') eventId: string,
     @Param('participantId') participantId: string,
   ) {
-    return this.events.checkInParticipant(participantId, eventId, req.adminClient.id);
+    return this.events.checkInParticipant(
+      participantId,
+      eventId,
+      req.adminClient.id,
+    );
   }
 
   @Delete(':participantId')
@@ -87,6 +98,10 @@ export class AdminParticipantsController {
     @Param('eventId') eventId: string,
     @Param('participantId') participantId: string,
   ) {
-    return this.events.removeParticipant(eventId, req.adminClient.id, participantId);
+    return this.events.removeParticipant(
+      eventId,
+      req.adminClient.id,
+      participantId,
+    );
   }
 }

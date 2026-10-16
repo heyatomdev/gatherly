@@ -1,4 +1,9 @@
-import { ExecutionContext, ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import {
   BASTION_OPTIONS,
   BastionAuditService,
@@ -29,8 +34,11 @@ export class BastionUserGuard extends PackageUserGuard {
     await super.canActivate(ctx);
     const req = ctx.switchToHttp().getRequest();
     const user = req.adminUser as UserJwtPayload;
-    const client = await this.prisma.client.findUnique({ where: { tenantId: user.tenantId } });
-    if (!client || !client.isActive) throw new ForbiddenException('Client non attivo per il tenant');
+    const client = await this.prisma.client.findUnique({
+      where: { tenantId: user.tenantId },
+    });
+    if (!client || !client.isActive)
+      throw new ForbiddenException('Client non attivo per il tenant');
     req.adminClient = client;
     return true;
   }

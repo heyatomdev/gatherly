@@ -16,7 +16,10 @@ import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { CategoryService } from '@/modules/categories/category.service';
-import { CreateCategoryDto, UpdateCategoryDto } from '@/modules/categories/dto/category.dto';
+import {
+  CreateCategoryDto,
+  UpdateCategoryDto,
+} from '@/modules/categories/dto/category.dto';
 
 @ApiTags('admin/categories')
 @ApiBearerAuth()
@@ -26,7 +29,12 @@ export class AdminCategoriesController {
   constructor(private readonly categories: CategoryService) {}
 
   @Get()
-  @ApiQuery({ name: 'withUsage', required: false, type: Boolean, description: 'Include event count per category' })
+  @ApiQuery({
+    name: 'withUsage',
+    required: false,
+    type: Boolean,
+    description: 'Include event count per category',
+  })
   list(@Request() req, @Query('withUsage') _withUsage?: string) {
     return this.categories.getCategoriesByClient(req.adminClient.id);
   }
@@ -43,7 +51,11 @@ export class AdminCategoriesController {
   }
 
   @Patch(':id')
-  update(@Request() req, @Param('id') id: string, @Body() dto: UpdateCategoryDto) {
+  update(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() dto: UpdateCategoryDto,
+  ) {
     return this.categories.updateCategory(id, req.adminClient.id, dto);
   }
 

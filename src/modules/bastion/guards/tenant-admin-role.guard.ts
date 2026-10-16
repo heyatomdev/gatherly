@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 
 const TENANT_ADMIN_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN'];
 
@@ -12,7 +17,8 @@ const TENANT_ADMIN_ROLES = ['ADMIN', 'OWNER', 'SUPER_ADMIN'];
 export class TenantAdminRoleGuard implements CanActivate {
   canActivate(ctx: ExecutionContext): boolean {
     const role = ctx.switchToHttp().getRequest().adminUser?.role;
-    if (!TENANT_ADMIN_ROLES.includes(role)) throw new ForbiddenException('Ruolo insufficiente');
+    if (!TENANT_ADMIN_ROLES.includes(role))
+      throw new ForbiddenException('Ruolo insufficiente');
     return true;
   }
 }
