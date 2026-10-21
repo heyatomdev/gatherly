@@ -382,13 +382,30 @@ export class EventService {
           ...(filters.toDate && { lte: new Date(filters.toDate) }),
         },
       }),
+      ...(filters.search && {
+        translations: {
+          some: {
+            OR: [
+              { title: { contains: filters.search, mode: 'insensitive' } },
+              {
+                description: { contains: filters.search, mode: 'insensitive' },
+              },
+            ],
+          },
+        },
+      }),
     };
+    const sortOrder = filters.sortOrder ?? 'asc';
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.event.findMany({
         where,
         include: { ...EVENT_INCLUDE, ...ACTIVE_COUNT },
-        orderBy: { startTime: 'asc' },
+        // id breaks ties so pages don't overlap on equal timestamps.
+        orderBy: [
+          { [filters.sortBy ?? 'startTime']: sortOrder },
+          { id: sortOrder },
+        ],
         skip: filters.skip,
         take: filters.limit,
       }),

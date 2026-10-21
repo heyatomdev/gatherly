@@ -283,6 +283,8 @@ Waitlist is automatic: if `maxParticipants` reached, status becomes `WAITLIST`. 
 
 **Seats**: `REGISTERED`, `CONFIRMED` and `ATTENDED` all take a seat (`ACTIVE_STATUSES`). Check-in must not free a seat, or the event overbooks while people are in the room. `PUT .../checkin` works only from `REGISTERED`/`CONFIRMED` (under `lockEvent()`); already `ATTENDED` returns the row unchanged with no webhook; `WAITLIST`/`CANCELLED` → `409`. `PATCH .../status` to `ATTENDED` from `WAITLIST` goes through the normal capacity check.
 
+**Check-in rate** (`/admin/stats` → `rates.checkInRate`, `noShowRate`, `participants.checkedIn`): counts `checkedIn` only on rows still holding a seat (`status NOT IN (CANCELLED, WAITLIST)`), the same set as the denominator. `checkedIn` survives a later cancel, and counting those rows gave rates above 100% (a 200% dashboard). Covered by `test/integration/analytics.int-spec.ts`.
+
 ### Event status is not writable
 
 Neither `CreateEventDto` nor `UpdateEventDto` has `status` — `POST /events` and
@@ -321,6 +323,16 @@ PATCH /events/:eventId
 ```
 
 `tagSlugs` replaces all existing tags (delete + recreate). Pass `[]` to remove all tags.
+
+### Person keys (`/admin/people`)
+
+A person is a participant identity across events: the external identity
+(`externalSource` + `externalId`) when present, the normalised email otherwise.
+The API never hands that out: `key` is `p_` + the first 32 hex of
+`sha256(clientId | identity)` (`keyOf()` in `admin-people.service.ts`), so an email
+does not end up in console URLs, breadcrumbs or access logs, and the same address
+gets a different key on another client. `GET /admin/people/:key` still accepts the
+old `ext:…` / `email:…` keys for existing links. A 404 does not echo the key.
 
 ### Updating translations
 
@@ -419,6 +431,9 @@ No more public `/clients` — see "Client management — no longer self-service"
 | `DELETE` | `/events/:eventId/participants/:participantId` | Cancel participant |
 
 **GET /events filters**: `status`, `type`, `categoryId`, `tagId`, `isOnline`, `fromDate`, `toDate`
+- `search` (trimmed, max 100, blank = ignored): case-insensitive contains on `title` **or** `description` of **any** translation
+- `sortBy` `startTime` | `createdAt` | `updatedAt` (default `startTime`), `sortOrder` `asc` | `desc` (default `asc`); `id` in the same direction breaks ties so pages never overlap
+- Same `GetEventsQueryDto` for `GET /events` (service-client) and `GET /admin/events` (Meridian). `forbidNonWhitelisted`: a client sending these to a Gatherly that predates them gets 400
 
 ---
 

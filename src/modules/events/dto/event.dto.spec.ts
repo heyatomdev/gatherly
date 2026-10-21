@@ -3,7 +3,7 @@ import {
   BadRequestException,
   ValidationPipe,
 } from '@nestjs/common';
-import { CreateEventDto, UpdateEventDto } from './event.dto';
+import { CreateEventDto, GetEventsQueryDto, UpdateEventDto } from './event.dto';
 
 // Same options as main.ts.
 const pipe = new ValidationPipe({
@@ -43,5 +43,28 @@ describe('event DTOs reject `status` — PUT /publish, /cancel, /complete own th
     await expect(
       pipe.transform({ status: 'PUBLISHED' }, body(UpdateEventDto)),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('GetEventsQueryDto search and sort', () => {
+  const query: ArgumentMetadata = {
+    type: 'query',
+    metatype: GetEventsQueryDto,
+  };
+
+  it('trims search and drops a blank one', async () => {
+    const trimmed = await pipe.transform({ search: '  tai chi ' }, query);
+    expect(trimmed.search).toBe('tai chi');
+    const blank = await pipe.transform({ search: '   ' }, query);
+    expect(blank.search).toBeUndefined();
+  });
+
+  it('rejects a search over 100 chars and an unknown sort field', async () => {
+    await expect(
+      pipe.transform({ search: 'x'.repeat(101) }, query),
+    ).rejects.toThrow(BadRequestException);
+    await expect(pipe.transform({ sortBy: 'title' }, query)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });

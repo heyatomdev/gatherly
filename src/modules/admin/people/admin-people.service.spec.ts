@@ -36,4 +36,26 @@ describe('AdminPeopleService.listPeople pagination', () => {
     });
     expect(result.data[0]).toMatchObject({ key: 'k', displayName: 'A' });
   });
+
+  it('hands out an opaque, client-scoped key instead of the email', async () => {
+    prisma.$queryRaw.mockClear();
+    prisma.$queryRaw.mockResolvedValue([]);
+    await service.listPeople('c1', plainToInstance(PeopleQueryDto, {}));
+    // The key column is a nested Prisma.Sql fragment, right before `AS key`.
+    const [strings, ...values] = prisma.$queryRaw.mock.calls[0];
+    const i = strings.findIndex((part: string) =>
+      part.trimStart().startsWith('AS key'),
+    );
+    expect(values[i - 1].sql).toMatch(
+      /^'p_' \|\| left\(encode\(sha256\(convert_to\(/,
+    );
+    expect(values[i - 1].values[0]).toBe('c1');
+  });
+
+  it('does not echo the key in a not-found error', async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    await expect(
+      service.getPersonProfile('c1', 'email:someone@example.com'),
+    ).rejects.toThrow(/^Person not found$/);
+  });
 });
