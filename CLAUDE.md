@@ -283,6 +283,8 @@ Waitlist is automatic: if `maxParticipants` reached, status becomes `WAITLIST`. 
 
 **Seats**: `REGISTERED`, `CONFIRMED` and `ATTENDED` all take a seat (`ACTIVE_STATUSES`). Check-in must not free a seat, or the event overbooks while people are in the room. `PUT .../checkin` works only from `REGISTERED`/`CONFIRMED` (under `lockEvent()`); already `ATTENDED` returns the row unchanged with no webhook; `WAITLIST`/`CANCELLED` → `409`. `PATCH .../status` to `ATTENDED` from `WAITLIST` goes through the normal capacity check.
 
+**Check-in rate** (`/admin/stats` → `rates.checkInRate`, `noShowRate`, `participants.checkedIn`): counts `checkedIn` only on rows still holding a seat (`status NOT IN (CANCELLED, WAITLIST)`), the same set as the denominator. `checkedIn` survives a later cancel, and counting those rows gave rates above 100% (a 200% dashboard). Covered by `test/integration/analytics.int-spec.ts`.
+
 ### Event status is not writable
 
 Neither `CreateEventDto` nor `UpdateEventDto` has `status` — `POST /events` and

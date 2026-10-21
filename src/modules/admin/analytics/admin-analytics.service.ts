@@ -78,7 +78,12 @@ export class AdminAnalyticsService {
         SELECT
           count(*)::int AS total,
           count(*) FILTER (WHERE p.status != 'CANCELLED')::int AS active,
-          count(*) FILTER (WHERE p."checkedIn")::int AS checked_in
+          -- checked in AND still holding a seat: a participant cancelled after
+          -- check-in keeps checkedIn = true, and counting them here made the
+          -- figure exceed active (a 200% check-in rate).
+          count(*) FILTER (
+            WHERE p."checkedIn" AND p.status NOT IN ('CANCELLED', 'WAITLIST')
+          )::int AS checked_in
         FROM participants p
         JOIN events e ON e.id = p."eventId"
         WHERE e."clientId" = ${clientId}
@@ -106,7 +111,10 @@ export class AdminAnalyticsService {
             -- seats taken, same set as EventService ACTIVE_STATUSES
             count(*) FILTER (WHERE p.status IN ('REGISTERED', 'CONFIRMED', 'ATTENDED'))::int AS seated_count,
             count(*) FILTER (WHERE p.status NOT IN ('CANCELLED', 'WAITLIST'))::int AS active_count,
-            count(*) FILTER (WHERE p."checkedIn")::int AS checked_in_count
+            -- same set as active_count, so the ratio can never pass 1
+            count(*) FILTER (
+              WHERE p."checkedIn" AND p.status NOT IN ('CANCELLED', 'WAITLIST')
+            )::int AS checked_in_count
           FROM events e
           LEFT JOIN participants p ON p."eventId" = e.id
           WHERE e."clientId" = ${clientId}
