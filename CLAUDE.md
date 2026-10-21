@@ -429,6 +429,9 @@ No more public `/clients` — see "Client management — no longer self-service"
 | `DELETE` | `/events/:eventId/participants/:participantId` | Cancel participant |
 
 **GET /events filters**: `status`, `type`, `categoryId`, `tagId`, `isOnline`, `fromDate`, `toDate`
+- `search` (trimmed, max 100, blank = ignored): case-insensitive contains on `title` **or** `description` of **any** translation
+- `sortBy` `startTime` | `createdAt` | `updatedAt` (default `startTime`), `sortOrder` `asc` | `desc` (default `asc`); `id` in the same direction breaks ties so pages never overlap
+- Same `GetEventsQueryDto` for `GET /events` (service-client) and `GET /admin/events` (Meridian). `forbidNonWhitelisted`: a client sending these to a Gatherly that predates them gets 400
 
 ---
 

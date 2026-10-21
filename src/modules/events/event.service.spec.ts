@@ -171,6 +171,39 @@ describe('EventService', () => {
       });
     });
 
+    it('defaults to startTime asc with an id tiebreak and no search filter', async () => {
+      await service.getEventsByClient(CLIENT_ID, {} as any);
+
+      const { where, orderBy } = mockPrisma.event.findMany.mock.calls[0][0];
+      expect(orderBy).toEqual([{ startTime: 'asc' }, { id: 'asc' }]);
+      expect(where.translations).toBeUndefined();
+    });
+
+    it('sorts by the requested field and order', async () => {
+      await service.getEventsByClient(CLIENT_ID, {
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      } as any);
+
+      const { orderBy } = mockPrisma.event.findMany.mock.calls[0][0];
+      expect(orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    });
+
+    it('searches title or description of any translation, case-insensitive', async () => {
+      await service.getEventsByClient(CLIENT_ID, { search: 'tai chi' } as any);
+
+      const { where } = mockPrisma.event.findMany.mock.calls[0][0];
+      expect(where.translations).toEqual({
+        some: {
+          OR: [
+            { title: { contains: 'tai chi', mode: 'insensitive' } },
+            { description: { contains: 'tai chi', mode: 'insensitive' } },
+          ],
+        },
+      });
+      expect(mockPrisma.event.count).toHaveBeenCalledWith({ where });
+    });
+
     it('returns an active participant count instead of participant rows', async () => {
       await service.getEventsByClient(CLIENT_ID, {} as any);
 

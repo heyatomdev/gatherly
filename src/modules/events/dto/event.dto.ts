@@ -326,6 +326,12 @@ export class UpdateParticipantStatusDto {
   status: 'REGISTERED' | 'WAITLIST' | 'CONFIRMED' | 'CANCELLED' | 'ATTENDED';
 }
 
+export const EVENT_SORT_FIELDS = [
+  'startTime',
+  'createdAt',
+  'updatedAt',
+] as const;
+
 export class GetEventsQueryDto extends PageParams {
   @ApiPropertyOptional({
     enum: ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED'],
@@ -366,6 +372,29 @@ export class GetEventsQueryDto extends PageParams {
   @IsOptional()
   @IsDateString()
   toDate?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Case-insensitive match on the title or description of any translation',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() || undefined : value,
+  )
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
+  @ApiPropertyOptional({ enum: EVENT_SORT_FIELDS, default: 'startTime' })
+  @IsOptional()
+  @IsEnum(EVENT_SORT_FIELDS)
+  sortBy?: (typeof EVENT_SORT_FIELDS)[number];
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc' })
+  @IsOptional()
+  @IsEnum(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc';
 }
 
 export class GetParticipantsQueryDto extends PageParams {
