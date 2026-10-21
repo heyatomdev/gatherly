@@ -16,7 +16,30 @@ export class AdminPeopleService {
     private readonly config: ConfigService,
   ) {}
 
-  private buildKeyPredicate(key: string): Prisma.Sql {
+  /**
+   * Who a participant row is: the external identity when it has one, the
+   * normalised email otherwise. Never leaves the service as is — see `keyOf`.
+   */
+  private readonly identity = Prisma.sql`CASE
+    WHEN p."externalId" IS NOT NULL
+      THEN 'ext:' || COALESCE(p."externalSource", '') || ':' || p."externalId"
+    ELSE 'email:' || lower(trim(p.email))
+  END`;
+
+  /**
+   * The person key the API hands out: an opaque hash of client + identity, so
+   * an email never ends up in a console URL, a breadcrumb or an access log.
+   * Scoped by client: the same address gets a different key on another client.
+   */
+  private keyOf(clientId: string): Prisma.Sql {
+    return Prisma.sql`'p_' || left(encode(sha256(convert_to(${clientId} || '|' || ${this.identity}, 'UTF8')), 'hex'), 32)`;
+  }
+
+  private buildKeyPredicate(clientId: string, key: string): Prisma.Sql {
+    if (key.startsWith('p_')) {
+      return Prisma.sql`${this.keyOf(clientId)} = ${key}`;
+    }
+    // Pre-hash keys, still accepted so existing links and bookmarks resolve.
     if (key.startsWith('ext:')) {
       const rest = key.slice(4);
       const colonIdx = rest.indexOf(':');
@@ -64,11 +87,7 @@ export class AdminPeopleService {
     >`
       WITH people AS (
         SELECT
-          CASE
-            WHEN p."externalId" IS NOT NULL
-              THEN 'ext:' || COALESCE(p."externalSource", '') || ':' || p."externalId"
-            ELSE 'email:' || lower(trim(p.email))
-          END AS key,
+          ${this.keyOf(clientId)} AS key,
           p."userName",
           p.email,
           p."externalId",
@@ -141,7 +160,7 @@ export class AdminPeopleService {
   }
 
   async getPersonProfile(clientId: string, key: string) {
-    const predicate = this.buildKeyPredicate(key);
+    const predicate = this.buildKeyPredicate(clientId, key);
     const vipThreshold = this.config.getOrThrow<number>('VIP_THRESHOLD');
     const atRiskDays = this.config.getOrThrow<number>('AT_RISK_DAYS');
 
@@ -256,7 +275,7 @@ export class AdminPeopleService {
 
     const s = summaryRows[0];
     if (!s || s.events_count === 0)
-      throw new NotFoundException(`Person not found: ${key}`);
+      throw new NotFoundException('Person not found');
 
     return {
       key,

@@ -322,6 +322,16 @@ PATCH /events/:eventId
 
 `tagSlugs` replaces all existing tags (delete + recreate). Pass `[]` to remove all tags.
 
+### Person keys (`/admin/people`)
+
+A person is a participant identity across events: the external identity
+(`externalSource` + `externalId`) when present, the normalised email otherwise.
+The API never hands that out: `key` is `p_` + the first 32 hex of
+`sha256(clientId | identity)` (`keyOf()` in `admin-people.service.ts`), so an email
+does not end up in console URLs, breadcrumbs or access logs, and the same address
+gets a different key on another client. `GET /admin/people/:key` still accepts the
+old `ext:…` / `email:…` keys for existing links. A 404 does not echo the key.
+
 ### Updating translations
 
 ```json
