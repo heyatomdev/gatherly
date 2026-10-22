@@ -6,7 +6,8 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOkResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiOkData } from '@/common/api-data';
 import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
@@ -31,7 +32,7 @@ export class AdminPeopleController {
   }
 
   @Get(':key')
-  @ApiOkResponse({ type: PersonProfileResponseDto })
+  @ApiOkData(PersonProfileResponseDto)
   profile(@Request() req, @Param('key') key: string) {
     return this.people.getPersonProfile(
       req.adminClient.id,

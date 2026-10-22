@@ -9,7 +9,8 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOkResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiOkData } from '@/common/api-data';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { TenantAdminRoleGuard } from '@/modules/bastion/guards/tenant-admin-role.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
@@ -28,7 +29,7 @@ export class AdminWebhooksController {
   ) {}
 
   @Get('deliveries')
-  @ApiOkResponse({ type: [WebhookDeliveryResponseDto] })
+  @ApiOkData([WebhookDeliveryResponseDto])
   deliveries(@Request() req, @Query('status') status?: string) {
     return this.clients.getWebhookDeliveries(req.adminClient.id, status);
   }

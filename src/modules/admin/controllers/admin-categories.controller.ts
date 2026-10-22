@@ -12,13 +12,8 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiQuery,
-  ApiTags,
-  ApiOkResponse,
-  ApiCreatedResponse,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiOkData, ApiCreatedData } from '@/common/api-data';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { CategoryService } from '@/modules/categories/category.service';
@@ -36,7 +31,7 @@ export class AdminCategoriesController {
   constructor(private readonly categories: CategoryService) {}
 
   @Get()
-  @ApiOkResponse({ type: [CategoryResponseDto] })
+  @ApiOkData([CategoryResponseDto])
   @ApiQuery({
     name: 'withUsage',
     required: false,
@@ -48,20 +43,20 @@ export class AdminCategoriesController {
   }
 
   @Get(':id')
-  @ApiOkResponse({ type: CategoryResponseDto })
+  @ApiOkData(CategoryResponseDto)
   get(@Request() req, @Param('id') id: string) {
     return this.categories.getCategoryById(id, req.adminClient.id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiCreatedResponse({ type: CategoryResponseDto })
+  @ApiCreatedData(CategoryResponseDto)
   create(@Request() req, @Body() dto: CreateCategoryDto) {
     return this.categories.createCategory(req.adminClient.id, dto);
   }
 
   @Patch(':id')
-  @ApiOkResponse({ type: CategoryResponseDto })
+  @ApiOkData(CategoryResponseDto)
   update(
     @Request() req,
     @Param('id') id: string,

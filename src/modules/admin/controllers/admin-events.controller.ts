@@ -13,12 +13,8 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiTags,
-  ApiOkResponse,
-  ApiCreatedResponse,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiOkData, ApiCreatedData } from '@/common/api-data';
 import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
@@ -49,26 +45,26 @@ export class AdminEventsController {
   }
 
   @Get(':id')
-  @ApiOkResponse({ type: EventDetailResponseDto })
+  @ApiOkData(EventDetailResponseDto)
   get(@Request() req, @Param('id') id: string) {
     return this.events.getEventById(id, req.adminClient.id);
   }
 
   @Get(':id/stats')
-  @ApiOkResponse({ type: EventStatsResponseDto })
+  @ApiOkData(EventStatsResponseDto)
   stats(@Request() req, @Param('id') id: string) {
     return this.events.getEventStats(id, req.adminClient.id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiCreatedResponse({ type: EventResponseDto })
+  @ApiCreatedData(EventResponseDto)
   create(@Request() req, @Body() dto: CreateEventDto) {
     return this.events.createEvent(req.adminClient.id, dto);
   }
 
   @Patch(':id')
-  @ApiOkResponse({ type: EventResponseDto })
+  @ApiOkData(EventResponseDto)
   update(@Request() req, @Param('id') id: string, @Body() dto: UpdateEventDto) {
     return this.events.updateEvent(id, req.adminClient.id, dto);
   }
@@ -81,21 +77,21 @@ export class AdminEventsController {
   }
 
   @Put(':id/publish')
-  @ApiOkResponse({ type: EventResponseDto })
+  @ApiOkData(EventResponseDto)
   @HttpCode(HttpStatus.OK)
   publish(@Request() req, @Param('id') id: string) {
     return this.events.publishEvent(id, req.adminClient.id);
   }
 
   @Put(':id/cancel')
-  @ApiOkResponse({ type: EventResponseDto })
+  @ApiOkData(EventResponseDto)
   @HttpCode(HttpStatus.OK)
   cancel(@Request() req, @Param('id') id: string) {
     return this.events.cancelEvent(id, req.adminClient.id);
   }
 
   @Put(':id/complete')
-  @ApiOkResponse({ type: EventResponseDto })
+  @ApiOkData(EventResponseDto)
   @HttpCode(HttpStatus.OK)
   complete(@Request() req, @Param('id') id: string) {
     return this.events.completeEvent(id, req.adminClient.id);

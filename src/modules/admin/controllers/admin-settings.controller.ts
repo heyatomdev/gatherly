@@ -9,12 +9,8 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiPropertyOptional,
-  ApiTags,
-  ApiOkResponse,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
+import { ApiOkData } from '@/common/api-data';
 import {
   IsBoolean,
   IsOptional,
@@ -62,14 +58,14 @@ export class AdminSettingsController {
   ) {}
 
   @Get()
-  @ApiOkResponse({ type: ClientResponseDto })
+  @ApiOkData(ClientResponseDto)
   getSettings(@Request() req) {
     // Never return req.adminClient as-is: it carries token + webhookSecret.
     return this.clients.getClient(req.adminClient.id);
   }
 
   @Patch()
-  @ApiOkResponse({ type: ClientResponseDto })
+  @ApiOkData(ClientResponseDto)
   @UseGuards(TenantAdminRoleGuard)
   async updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
     const client = await this.clients.updateClient(req.adminClient.id, dto);
@@ -85,7 +81,7 @@ export class AdminSettingsController {
   }
 
   @Post('webhook-secret')
-  @ApiOkResponse({ type: WebhookSecretResponseDto })
+  @ApiOkData(WebhookSecretResponseDto)
   @UseGuards(TenantAdminRoleGuard)
   @HttpCode(HttpStatus.OK)
   async regenerateWebhookSecret(@Request() req) {

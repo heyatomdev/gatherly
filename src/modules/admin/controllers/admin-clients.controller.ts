@@ -16,9 +16,8 @@ import {
   ApiOperation,
   ApiQuery,
   ApiTags,
-  ApiOkResponse,
-  ApiCreatedResponse,
 } from '@nestjs/swagger';
+import { ApiOkData, ApiCreatedData } from '@/common/api-data';
 import { BastionSuperAdminGuard } from '@/modules/bastion/guards/bastion-super-admin.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { BastionAuditService } from '@heyatom/bastion-client/nest';
@@ -54,7 +53,7 @@ export class AdminClientsController {
   ) {}
 
   @Get()
-  @ApiOkResponse({ type: [ClientResponseDto] })
+  @ApiOkData([ClientResponseDto])
   @ApiOperation({
     summary: 'List all clients (token and webhookSecret excluded)',
   })
@@ -64,7 +63,7 @@ export class AdminClientsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiCreatedResponse({ type: ClientCreatedResponseDto })
+  @ApiCreatedData(ClientCreatedResponseDto)
   @ApiOperation({ summary: 'Create client — returns token once' })
   async create(@Request() req, @Body() dto: CreateClientDto) {
     const client = await this.clients.createClient(dto);
@@ -76,7 +75,7 @@ export class AdminClientsController {
   }
 
   @Patch(':id')
-  @ApiOkResponse({ type: ClientResponseDto })
+  @ApiOkData(ClientResponseDto)
   @ApiOperation({ summary: 'Update client settings' })
   async update(
     @Request() req,
@@ -93,7 +92,7 @@ export class AdminClientsController {
 
   @Post(':id/revoke')
   @HttpCode(HttpStatus.OK)
-  @ApiOkResponse({ type: ClientResponseDto })
+  @ApiOkData(ClientResponseDto)
   @ApiOperation({ summary: 'Revoke client — blocks all API access' })
   async revoke(@Request() req, @Param('id') id: string) {
     const client = await this.clients.revokeClient(id);
@@ -106,7 +105,7 @@ export class AdminClientsController {
 
   @Post(':id/reactivate')
   @HttpCode(HttpStatus.OK)
-  @ApiOkResponse({ type: ClientResponseDto })
+  @ApiOkData(ClientResponseDto)
   @ApiOperation({ summary: 'Reactivate a revoked client' })
   async reactivate(@Request() req, @Param('id') id: string) {
     const client = await this.clients.reactivateClient(id);
@@ -119,7 +118,7 @@ export class AdminClientsController {
 
   @Post(':id/token')
   @HttpCode(HttpStatus.OK)
-  @ApiOkResponse({ type: ClientTokenResponseDto })
+  @ApiOkData(ClientTokenResponseDto)
   @ApiOperation({ summary: 'Regenerate client API token' })
   async regenerateToken(@Request() req, @Param('id') id: string) {
     const result = await this.clients.regenerateToken(id);
@@ -132,7 +131,7 @@ export class AdminClientsController {
 
   @Post(':id/webhook-secret')
   @HttpCode(HttpStatus.OK)
-  @ApiOkResponse({ type: WebhookSecretResponseDto })
+  @ApiOkData(WebhookSecretResponseDto)
   @ApiOperation({
     summary:
       'Regenerate webhook HMAC secret — use to verify the Standard Webhooks webhook-signature header',
@@ -149,7 +148,7 @@ export class AdminClientsController {
   }
 
   @Get(':id/webhook-deliveries')
-  @ApiOkResponse({ type: [WebhookDeliveryResponseDto] })
+  @ApiOkData([WebhookDeliveryResponseDto])
   @ApiOperation({ summary: 'List webhook delivery attempts for debugging' })
   @ApiQuery({
     name: 'status',
