@@ -4,11 +4,13 @@ Indice dei piani di sviluppo. Lo stato vive nel frontmatter di ogni piano; in ca
 divergenza vince il frontmatter. Il lavoro non ancora pianificato è in
 [BACKLOG.md](../BACKLOG.md).
 
-Prossimo numero libero: **17** (il 10 non è mai stato usato; i numeri non si riusano).
+Prossimo numero libero: **18** (il 10 non è mai stato usato; i numeri non si riusano).
 
 ## Aperti
 
-Nessun piano aperto.
+| # | Piano | Stato |
+|---|-------|-------|
+| 17 | [Check-in da QR/codice](17-qr-checkin.md) | open |
 
 ## Chiusi — [done/](done/)
 
