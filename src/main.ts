@@ -10,7 +10,7 @@ import {
   setupSwagger,
 } from '@heyatom/nest-common';
 import { AppModule } from './modules/app/app.module';
-import { APP_VERSION } from './common/app-version';
+import { SWAGGER_OPTIONS } from './common/openapi';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -32,11 +32,7 @@ async function bootstrap() {
   // Resolved once in config validation (swaggerEnabled): explicit ENABLE_SWAGGER, else dev/test only.
   const swagger = config.get<string>('ENABLE_SWAGGER') === 'true';
   if (swagger) {
-    setupSwagger(app, {
-      title: 'Gatherly',
-      version: APP_VERSION,
-      configure: (b) => b.addBearerAuth(),
-    });
+    setupSwagger(app, SWAGGER_OPTIONS);
   }
 
   await app.listen(port);

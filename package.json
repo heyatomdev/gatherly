@@ -4,6 +4,7 @@
   "description": "Multi-tenant event management system with NestJS and Prisma",
   "scripts": {
     "build": "nest build",
+    "openapi:dump": "ts-node -r tsconfig-paths/register scripts/openapi-dump.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -72,6 +73,7 @@
     "testcontainers": "^12.2.0",
     "ts-jest": "^29.4.12",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^6.0.3"
   },
   "jest": {
