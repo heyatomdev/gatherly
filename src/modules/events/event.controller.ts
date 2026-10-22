@@ -14,8 +14,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
-import { ApiOkData, ApiCreatedData } from '@/common/api-data';
-import { ApiPaginatedResponse } from '@heyatom/nest-common';
+import {
+  ApiCreatedData,
+  ApiOkData,
+  ApiPaginatedResponse,
+} from '@heyatom/nest-common';
 import { EventService } from './event.service';
 import { IdempotencyInterceptor } from '@/common/idempotency.interceptor';
 import {

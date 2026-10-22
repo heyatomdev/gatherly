@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { ApiOkData } from '@/common/api-data';
+import { ApiOkData } from '@heyatom/nest-common';
 import {
   IsBoolean,
   IsOptional,

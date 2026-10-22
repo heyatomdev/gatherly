@@ -14,8 +14,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ApiOkData, ApiCreatedData } from '@/common/api-data';
-import { ApiPaginatedResponse } from '@heyatom/nest-common';
+import {
+  ApiCreatedData,
+  ApiOkData,
+  ApiPaginatedResponse,
+} from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { EventService } from '@/modules/events/event.service';

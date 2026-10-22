@@ -11,7 +11,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { ApiOkData, ApiCreatedData } from '@/common/api-data';
+import { ApiOkData, ApiCreatedData } from '@heyatom/nest-common';
 import { TagService } from './tag.service';
 import { CreateTagDto, UpdateTagDto, TagResponseDto } from './dto/tag.dto';
 import { TagEventResponseDto } from '../events/dto/event-response.dto';

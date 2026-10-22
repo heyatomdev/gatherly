@@ -7,8 +7,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ApiOkData } from '@/common/api-data';
-import { ApiPaginatedResponse } from '@heyatom/nest-common';
+import { ApiOkData, ApiPaginatedResponse } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { AdminPeopleService } from './admin-people.service';

@@ -17,7 +17,7 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { ApiOkData, ApiCreatedData } from '@/common/api-data';
+import { ApiOkData, ApiCreatedData } from '@heyatom/nest-common';
 import { BastionSuperAdminGuard } from '@/modules/bastion/guards/bastion-super-admin.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { BastionAuditService } from '@heyatom/bastion-client/nest';

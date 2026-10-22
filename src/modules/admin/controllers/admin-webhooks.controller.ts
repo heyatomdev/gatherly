@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ApiOkData } from '@/common/api-data';
+import { ApiOkData } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { TenantAdminRoleGuard } from '@/modules/bastion/guards/tenant-admin-role.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';

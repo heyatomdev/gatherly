@@ -17,7 +17,7 @@ import {
   CategoryResponseDto,
 } from './dto/category.dto';
 import { ApiTags } from '@nestjs/swagger';
-import { ApiOkData, ApiCreatedData } from '@/common/api-data';
+import { ApiOkData, ApiCreatedData } from '@heyatom/nest-common';
 
 @ApiTags('categories')
 @Controller('categories')
