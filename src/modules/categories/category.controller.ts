@@ -16,7 +16,7 @@ import {
   UpdateCategoryDto,
   CategoryResponseDto,
 } from './dto/category.dto';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiTags, ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
 
 @ApiTags('categories')
 @Controller('categories')
@@ -25,6 +25,7 @@ export class CategoryController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiCreatedResponse({ type: CategoryResponseDto })
   async createCategory(
     @Request() req,
     @Body() createCategoryDto: CreateCategoryDto,
@@ -36,11 +37,13 @@ export class CategoryController {
   }
 
   @Get()
+  @ApiOkResponse({ type: [CategoryResponseDto] })
   async getCategories(@Request() req): Promise<CategoryResponseDto[]> {
     return this.categoryService.getCategoriesByClient(req.client.id);
   }
 
   @Get(':categoryId')
+  @ApiOkResponse({ type: CategoryResponseDto })
   async getCategory(
     @Request() req,
     @Param('categoryId') categoryId: string,
@@ -49,6 +52,7 @@ export class CategoryController {
   }
 
   @Patch(':categoryId')
+  @ApiOkResponse({ type: CategoryResponseDto })
   async updateCategory(
     @Request() req,
     @Param('categoryId') categoryId: string,

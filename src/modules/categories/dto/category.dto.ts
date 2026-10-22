@@ -60,15 +60,32 @@ export class UpdateCategoryDto {
 }
 
 export class CategoryTranslationResponseDto {
+  @ApiProperty({ example: 'it' })
   locale: string;
+
+  @ApiProperty()
   name: string;
 }
 
 export class CategoryResponseDto {
+  @ApiProperty()
   id: string;
+
+  @ApiProperty()
   clientId: string;
-  color?: string;
-  icon?: string;
+
+  @ApiPropertyOptional({ nullable: true, type: String })
+  color?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String })
+  icon?: string | null;
+
+  @ApiProperty({ type: [CategoryTranslationResponseDto] })
   translations: CategoryTranslationResponseDto[];
+
+  @ApiPropertyOptional({
+    description: 'Present on list/detail only',
+    example: { events: 3 },
+  })
   _count?: { events: number };
 }

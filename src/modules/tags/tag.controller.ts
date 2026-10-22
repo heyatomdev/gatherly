@@ -10,9 +10,15 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiCreatedResponse,
+  ApiOkResponse,
+} from '@nestjs/swagger';
 import { TagService } from './tag.service';
-import { CreateTagDto, UpdateTagDto } from './dto/tag.dto';
+import { CreateTagDto, UpdateTagDto, TagResponseDto } from './dto/tag.dto';
+import { TagEventResponseDto } from '../events/dto/event-response.dto';
 
 @ApiTags('tags')
 @Controller('tags')
@@ -21,29 +27,34 @@ export class TagController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiCreatedResponse({ type: TagResponseDto })
   @ApiOperation({ summary: 'Create tag for client' })
   async createTag(@Request() req, @Body() dto: CreateTagDto) {
     return this.tagService.createTag(req.client.id, dto);
   }
 
   @Get()
+  @ApiOkResponse({ type: [TagResponseDto] })
   @ApiOperation({ summary: 'List all tags for client' })
   async getTags(@Request() req) {
     return this.tagService.getTagsByClient(req.client.id);
   }
 
   @Get(':tagId')
+  @ApiOkResponse({ type: TagResponseDto })
   async getTag(@Request() req, @Param('tagId') tagId: string) {
     return this.tagService.getTagById(tagId, req.client.id);
   }
 
   @Get(':tagId/events')
+  @ApiOkResponse({ type: [TagEventResponseDto] })
   @ApiOperation({ summary: 'List events associated with tag' })
   async getTagEvents(@Request() req, @Param('tagId') tagId: string) {
     return this.tagService.getTagEvents(tagId, req.client.id);
   }
 
   @Patch(':tagId')
+  @ApiOkResponse({ type: TagResponseDto })
   @ApiOperation({ summary: 'Update tag label (localized)' })
   async updateTag(
     @Request() req,

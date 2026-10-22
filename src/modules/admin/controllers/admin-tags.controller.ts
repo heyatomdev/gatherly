@@ -12,11 +12,18 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiQuery,
+  ApiTags,
+  ApiOkResponse,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { TagService } from '@/modules/tags/tag.service';
 import { CreateTagDto, UpdateTagDto } from '@/modules/tags/dto/tag.dto';
+import { TagResponseDto } from '@/modules/tags/dto/tag.dto';
 
 @ApiTags('admin/tags')
 @ApiBearerAuth()
@@ -26,6 +33,7 @@ export class AdminTagsController {
   constructor(private readonly tags: TagService) {}
 
   @Get()
+  @ApiOkResponse({ type: [TagResponseDto] })
   @ApiQuery({
     name: 'withUsage',
     required: false,
@@ -37,17 +45,20 @@ export class AdminTagsController {
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: TagResponseDto })
   get(@Request() req, @Param('id') id: string) {
     return this.tags.getTagById(id, req.adminClient.id);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiCreatedResponse({ type: TagResponseDto })
   create(@Request() req, @Body() dto: CreateTagDto) {
     return this.tags.createTag(req.adminClient.id, dto);
   }
 
   @Patch(':id')
+  @ApiOkResponse({ type: TagResponseDto })
   update(@Request() req, @Param('id') id: string, @Body() dto: UpdateTagDto) {
     return this.tags.updateTag(id, req.adminClient.id, dto);
   }

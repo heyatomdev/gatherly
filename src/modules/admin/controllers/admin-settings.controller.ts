@@ -9,7 +9,12 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiPropertyOptional,
+  ApiTags,
+  ApiOkResponse,
+} from '@nestjs/swagger';
 import {
   IsBoolean,
   IsOptional,
@@ -22,6 +27,10 @@ import { TenantAdminRoleGuard } from '@/modules/bastion/guards/tenant-admin-role
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { BastionAuditService } from '@heyatom/bastion-client/nest';
 import { ClientService } from '@/modules/clients/client.service';
+import {
+  ClientResponseDto,
+  WebhookSecretResponseDto,
+} from '@/modules/clients/dto/client-response.dto';
 
 export class UpdateSettingsDto {
   @ApiPropertyOptional()
@@ -53,12 +62,14 @@ export class AdminSettingsController {
   ) {}
 
   @Get()
+  @ApiOkResponse({ type: ClientResponseDto })
   getSettings(@Request() req) {
     // Never return req.adminClient as-is: it carries token + webhookSecret.
     return this.clients.getClient(req.adminClient.id);
   }
 
   @Patch()
+  @ApiOkResponse({ type: ClientResponseDto })
   @UseGuards(TenantAdminRoleGuard)
   async updateSettings(@Request() req, @Body() dto: UpdateSettingsDto) {
     const client = await this.clients.updateClient(req.adminClient.id, dto);
@@ -74,6 +85,7 @@ export class AdminSettingsController {
   }
 
   @Post('webhook-secret')
+  @ApiOkResponse({ type: WebhookSecretResponseDto })
   @UseGuards(TenantAdminRoleGuard)
   @HttpCode(HttpStatus.OK)
   async regenerateWebhookSecret(@Request() req) {

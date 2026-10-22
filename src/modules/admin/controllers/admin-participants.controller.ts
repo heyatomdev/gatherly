@@ -13,7 +13,12 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiTags,
+  ApiOkResponse,
+  ApiCreatedResponse,
+} from '@nestjs/swagger';
 import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
@@ -24,6 +29,10 @@ import {
   GetParticipantsQueryDto,
   UpdateParticipantStatusDto,
 } from '@/modules/events/dto/event.dto';
+import {
+  BulkAddResultDto,
+  ParticipantResponseDto,
+} from '@/modules/events/dto/event-response.dto';
 
 @ApiTags('admin/events')
 @ApiBearerAuth()
@@ -33,7 +42,7 @@ export class AdminParticipantsController {
   constructor(private readonly events: EventService) {}
 
   @Get()
-  @ApiPaginatedResponse()
+  @ApiPaginatedResponse(ParticipantResponseDto)
   list(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -44,6 +53,7 @@ export class AdminParticipantsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiCreatedResponse({ type: ParticipantResponseDto })
   add(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -54,6 +64,7 @@ export class AdminParticipantsController {
 
   @Post('bulk')
   @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: BulkAddResultDto })
   addBulk(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -63,6 +74,7 @@ export class AdminParticipantsController {
   }
 
   @Patch(':participantId/status')
+  @ApiOkResponse({ type: ParticipantResponseDto })
   updateStatus(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -79,6 +91,7 @@ export class AdminParticipantsController {
 
   @Put(':participantId/checkin')
   @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: ParticipantResponseDto })
   checkIn(
     @Request() req,
     @Param('eventId') eventId: string,
