@@ -14,7 +14,7 @@ allowBuilds:
 # (multer via @nestjs/platform-express 11, mysql2 + deepmerge-ts via prisma 7 CLI).
 overrides:
   proxy-addr: '>=2.0.8'
-  multer: ^2.4.0
+  multer: ^2.5.0
   mysql2: ^3.22.0
   deepmerge-ts: ^8.0.0
   js-yaml: ^4.3.2
