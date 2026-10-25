@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateClientDto, UpdateClientDto } from './dto/client.dto';
+import { paginate } from '@heyatom/nest-common';
+import {
+  CreateClientDto,
+  UpdateClientDto,
+  WebhookDeliveriesQueryDto,
+} from './dto/client.dto';
 import {
   WebhookUrlError,
   assertPublicWebhookUrl,
@@ -126,16 +131,23 @@ export class ClientService {
     });
   }
 
-  async getWebhookDeliveries(id: string, status?: string) {
+  async getWebhookDeliveries(id: string, query: WebhookDeliveriesQueryDto) {
     await this.findOrFail(id);
-    return this.prisma.webhookDelivery.findMany({
-      where: {
-        clientId: id,
-        ...(status && { status: status as any }),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
+    const where = {
+      clientId: id,
+      ...(query.status && { status: query.status }),
+    };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.webhookDelivery.findMany({
+        where,
+        // id breaks ties so pages don't overlap on equal timestamps.
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: query.skip,
+        take: query.limit,
+      }),
+      this.prisma.webhookDelivery.count({ where }),
+    ]);
+    return paginate(data, total, query);
   }
 
   private async findOrFail(id: string) {
