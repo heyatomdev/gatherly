@@ -1,0 +1,5710 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/health/live": {
+      "get": {
+        "description": "Always returns 200. Used by container orchestrators to check if the process is alive.",
+        "operationId": "HealthController_live",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "example": {
+                    "status": "ok"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Checks database connectivity. Returns 200 when the service is ready to accept traffic, 503 otherwise.",
+        "operationId": "HealthController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Service is ready — all health indicators passed\n\nThe Health Check is successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {},
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Health Check is not successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "error"
+                    },
+                    "info": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "error": {
+                      "type": "object",
+                      "example": {
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      },
+                      "nullable": true
+                    },
+                    "details": {
+                      "type": "object",
+                      "example": {
+                        "database": {
+                          "status": "up"
+                        },
+                        "redis": {
+                          "status": "down",
+                          "message": "Could not connect"
+                        }
+                      },
+                      "additionalProperties": {
+                        "type": "object",
+                        "required": [
+                          "status"
+                        ],
+                        "properties": {
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Readiness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/events": {
+      "post": {
+        "operationId": "EventController_createEvent",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID from caller — retries return cached response",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create event with translations and optional tags",
+        "tags": [
+          "events"
+        ]
+      },
+      "get": {
+        "operationId": "EventController_getEvents",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "PUBLISHED",
+                "CANCELLED",
+                "COMPLETED"
+              ]
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tagId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "isOnline",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fromDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "toDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive match on the title or description of any translation",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "startTime",
+              "type": "string",
+              "enum": [
+                "startTime",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "asc",
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EventWithCountResponseDto"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PageMetaDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List events for client with optional filters and pagination",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}": {
+      "get": {
+        "operationId": "EventController_getEvent",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventDetailResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "events"
+        ]
+      },
+      "patch": {
+        "operationId": "EventController_updateEvent",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update event — pass translations to upsert, tagSlugs to replace all tags",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/stats": {
+      "get": {
+        "operationId": "EventController_getEventStats",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventStatsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/participants": {
+      "get": {
+        "operationId": "EventController_getParticipants",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "REGISTERED",
+                "WAITLIST",
+                "CONFIRMED",
+                "CANCELLED",
+                "ATTENDED"
+              ]
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ATTENDEE",
+                "SPEAKER",
+                "ORGANIZER",
+                "HOST"
+              ]
+            }
+          },
+          {
+            "name": "externalSource",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "externalId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkedIn",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ParticipantResponseDto"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PageMetaDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List participants with filters and pagination",
+        "tags": [
+          "events"
+        ]
+      },
+      "post": {
+        "operationId": "EventController_addParticipant",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID from caller — retries return cached response",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddParticipantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ParticipantResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Add participant — INLINE (direct data) or EXTERNAL (externalId + externalSource)",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/publish": {
+      "put": {
+        "operationId": "EventController_publishEvent",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Publish event — validates required fields, transitions DRAFT → PUBLISHED",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/complete": {
+      "put": {
+        "operationId": "EventController_completeEvent",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/cancel": {
+      "put": {
+        "operationId": "EventController_cancelEvent",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Cancel event — blocks further status changes. Cancels future recurring children.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/participants/bulk": {
+      "post": {
+        "operationId": "EventController_addParticipantsBulk",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "UUID from caller — retries return cached response",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkAddParticipantsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/BulkAddResultDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Add multiple participants in one request. Returns counts of added/waitlisted/skipped/errors.",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/participants/{participantId}/status": {
+      "patch": {
+        "operationId": "EventController_updateParticipantStatus",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateParticipantStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ParticipantResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/participants/{participantId}/checkin": {
+      "put": {
+        "operationId": "EventController_checkInParticipant",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ParticipantResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{eventId}/participants/{participantId}": {
+      "delete": {
+        "operationId": "EventController_removeParticipant",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Cancel participant by participantId (marks as CANCELLED, promotes waitlist)",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/categories": {
+      "post": {
+        "operationId": "CategoryController_createCategory",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "categories"
+        ]
+      },
+      "get": {
+        "operationId": "CategoryController_getCategories",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CategoryResponseDto"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/categories/{categoryId}": {
+      "get": {
+        "operationId": "CategoryController_getCategory",
+        "parameters": [
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "categories"
+        ]
+      },
+      "patch": {
+        "operationId": "CategoryController_updateCategory",
+        "parameters": [
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "categories"
+        ]
+      },
+      "delete": {
+        "operationId": "CategoryController_deleteCategory",
+        "parameters": [
+          {
+            "name": "categoryId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/tags": {
+      "post": {
+        "operationId": "TagController_createTag",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTagDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TagResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create tag for client",
+        "tags": [
+          "tags"
+        ]
+      },
+      "get": {
+        "operationId": "TagController_getTags",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TagResponseDto"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List all tags for client",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/tags/{tagId}": {
+      "get": {
+        "operationId": "TagController_getTag",
+        "parameters": [
+          {
+            "name": "tagId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TagResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "tags"
+        ]
+      },
+      "patch": {
+        "operationId": "TagController_updateTag",
+        "parameters": [
+          {
+            "name": "tagId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTagDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TagResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update tag label (localized)",
+        "tags": [
+          "tags"
+        ]
+      },
+      "delete": {
+        "operationId": "TagController_deleteTag",
+        "parameters": [
+          {
+            "name": "tagId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "summary": "Delete tag — removed from all events automatically",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/tags/{tagId}/events": {
+      "get": {
+        "operationId": "TagController_getTagEvents",
+        "parameters": [
+          {
+            "name": "tagId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EventWithCountResponseDto"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PageMetaDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List events associated with tag",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/admin/events": {
+      "get": {
+        "operationId": "AdminEventsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "PUBLISHED",
+                "CANCELLED",
+                "COMPLETED"
+              ]
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tagId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "isOnline",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fromDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "toDate",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive match on the title or description of any translation",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "startTime",
+              "type": "string",
+              "enum": [
+                "startTime",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "asc",
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EventWithCountResponseDto"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PageMetaDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      },
+      "post": {
+        "operationId": "AdminEventsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{id}": {
+      "get": {
+        "operationId": "AdminEventsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventDetailResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminEventsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      },
+      "delete": {
+        "operationId": "AdminEventsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{id}/stats": {
+      "get": {
+        "operationId": "AdminEventsController_stats",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventStatsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{id}/publish": {
+      "put": {
+        "operationId": "AdminEventsController_publish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{id}/cancel": {
+      "put": {
+        "operationId": "AdminEventsController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{id}/complete": {
+      "put": {
+        "operationId": "AdminEventsController_complete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/EventResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{eventId}/participants": {
+      "get": {
+        "operationId": "AdminParticipantsController_list",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "REGISTERED",
+                "WAITLIST",
+                "CONFIRMED",
+                "CANCELLED",
+                "ATTENDED"
+              ]
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ATTENDEE",
+                "SPEAKER",
+                "ORGANIZER",
+                "HOST"
+              ]
+            }
+          },
+          {
+            "name": "externalSource",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "externalId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkedIn",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ParticipantResponseDto"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PageMetaDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      },
+      "post": {
+        "operationId": "AdminParticipantsController_add",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddParticipantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ParticipantResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{eventId}/participants/bulk": {
+      "post": {
+        "operationId": "AdminParticipantsController_addBulk",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkAddParticipantsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/BulkAddResultDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{eventId}/participants/{participantId}/status": {
+      "patch": {
+        "operationId": "AdminParticipantsController_updateStatus",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateParticipantStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ParticipantResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{eventId}/participants/{participantId}/checkin": {
+      "put": {
+        "operationId": "AdminParticipantsController_checkIn",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ParticipantResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/events/{eventId}/participants/{participantId}": {
+      "delete": {
+        "operationId": "AdminParticipantsController_remove",
+        "parameters": [
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participantId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/events"
+        ]
+      }
+    },
+    "/admin/categories": {
+      "get": {
+        "operationId": "AdminCategoriesController_list",
+        "parameters": [
+          {
+            "name": "withUsage",
+            "required": false,
+            "in": "query",
+            "description": "Include event count per category",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CategoryResponseDto"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/categories"
+        ]
+      },
+      "post": {
+        "operationId": "AdminCategoriesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/categories"
+        ]
+      }
+    },
+    "/admin/categories/{id}": {
+      "get": {
+        "operationId": "AdminCategoriesController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/categories"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminCategoriesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/categories"
+        ]
+      },
+      "delete": {
+        "operationId": "AdminCategoriesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/categories"
+        ]
+      }
+    },
+    "/admin/tags": {
+      "get": {
+        "operationId": "AdminTagsController_list",
+        "parameters": [
+          {
+            "name": "withUsage",
+            "required": false,
+            "in": "query",
+            "description": "Include event count and orphan flag per tag",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TagResponseDto"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/tags"
+        ]
+      },
+      "post": {
+        "operationId": "AdminTagsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTagDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TagResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/tags"
+        ]
+      }
+    },
+    "/admin/tags/{id}": {
+      "get": {
+        "operationId": "AdminTagsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TagResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/tags"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminTagsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTagDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TagResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/tags"
+        ]
+      },
+      "delete": {
+        "operationId": "AdminTagsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/tags"
+        ]
+      }
+    },
+    "/admin/webhooks/deliveries": {
+      "get": {
+        "operationId": "AdminWebhooksController_deliveries",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "DELIVERED",
+                "FAILED"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WebhookDeliveryResponseDto"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PageMetaDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/webhooks"
+        ]
+      }
+    },
+    "/admin/webhooks/deliveries/{id}/retry": {
+      "post": {
+        "operationId": "AdminWebhooksController_retry",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/webhooks"
+        ]
+      }
+    },
+    "/admin/settings": {
+      "get": {
+        "operationId": "AdminSettingsController_getSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/settings"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminSettingsController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/settings"
+        ]
+      }
+    },
+    "/admin/settings/webhook-secret": {
+      "post": {
+        "operationId": "AdminSettingsController_regenerateWebhookSecret",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookSecretResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/settings"
+        ]
+      }
+    },
+    "/admin/clients": {
+      "get": {
+        "operationId": "AdminClientsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ClientResponseDto"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List all clients (token and webhookSecret excluded)",
+        "tags": [
+          "admin/clients"
+        ]
+      },
+      "post": {
+        "operationId": "AdminClientsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClientDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientCreatedResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create client — returns token once",
+        "tags": [
+          "admin/clients"
+        ]
+      }
+    },
+    "/admin/clients/{id}": {
+      "patch": {
+        "operationId": "AdminClientsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClientDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update client settings",
+        "tags": [
+          "admin/clients"
+        ]
+      }
+    },
+    "/admin/clients/{id}/revoke": {
+      "post": {
+        "operationId": "AdminClientsController_revoke",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoke client — blocks all API access",
+        "tags": [
+          "admin/clients"
+        ]
+      }
+    },
+    "/admin/clients/{id}/reactivate": {
+      "post": {
+        "operationId": "AdminClientsController_reactivate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reactivate a revoked client",
+        "tags": [
+          "admin/clients"
+        ]
+      }
+    },
+    "/admin/clients/{id}/token": {
+      "post": {
+        "operationId": "AdminClientsController_regenerateToken",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ClientTokenResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Regenerate client API token",
+        "tags": [
+          "admin/clients"
+        ]
+      }
+    },
+    "/admin/clients/{id}/webhook-secret": {
+      "post": {
+        "operationId": "AdminClientsController_regenerateWebhookSecret",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/WebhookSecretResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Regenerate webhook HMAC secret — use to verify the Standard Webhooks webhook-signature header",
+        "tags": [
+          "admin/clients"
+        ]
+      }
+    },
+    "/admin/clients/{id}/webhook-deliveries": {
+      "get": {
+        "operationId": "AdminClientsController_getWebhookDeliveries",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "DELIVERED",
+                "FAILED"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WebhookDeliveryResponseDto"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PageMetaDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List webhook delivery attempts for debugging",
+        "tags": [
+          "admin/clients"
+        ]
+      }
+    },
+    "/admin/stats": {
+      "get": {
+        "operationId": "AdminAnalyticsController_stats",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TenantStatsResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/analytics"
+        ]
+      }
+    },
+    "/admin/stats/timeseries": {
+      "get": {
+        "operationId": "AdminAnalyticsController_timeseries",
+        "parameters": [
+          {
+            "name": "metric",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "events",
+                "participants"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "interval",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/TimeseriesResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/analytics"
+        ]
+      }
+    },
+    "/admin/stats/breakdown": {
+      "get": {
+        "operationId": "AdminAnalyticsController_breakdown",
+        "parameters": [
+          {
+            "name": "by",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "category",
+                "tag",
+                "status"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/BreakdownResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/analytics"
+        ]
+      }
+    },
+    "/admin/analytics/retention": {
+      "get": {
+        "operationId": "AdminAnalyticsController_retention",
+        "parameters": [
+          {
+            "name": "granularity",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "month",
+              "type": "string",
+              "enum": [
+                "month",
+                "week"
+              ]
+            }
+          },
+          {
+            "name": "months",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 12,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/RetentionResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/analytics"
+        ]
+      }
+    },
+    "/admin/people": {
+      "get": {
+        "operationId": "AdminPeopleController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "segment",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "new",
+                "returning",
+                "vip",
+                "at_risk"
+              ]
+            }
+          },
+          {
+            "name": "minEvents",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PersonSummaryDto"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/PageMetaDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/people"
+        ]
+      }
+    },
+    "/admin/people/{key}": {
+      "get": {
+        "operationId": "AdminPeopleController_profile",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/PersonProfileResponseDto"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin/people"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Gatherly",
+    "description": "",
+    "version": "2.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "EventTranslationResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "locale": {
+            "type": "string",
+            "example": "it"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "eventId",
+          "locale",
+          "title"
+        ]
+      },
+      "TagResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "label": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "it": "Competitivo",
+              "en": "Competitive"
+            }
+          },
+          "_count": {
+            "type": "object",
+            "description": "Present on admin list with withUsage=true",
+            "example": {
+              "events": 3
+            }
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "slug"
+        ]
+      },
+      "EventTagResponseDto": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "tagId": {
+            "type": "string"
+          },
+          "tag": {
+            "$ref": "#/components/schemas/TagResponseDto"
+          }
+        },
+        "required": [
+          "eventId",
+          "tagId",
+          "tag"
+        ]
+      },
+      "CategoryTranslationResponseDto": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "type": "string",
+            "example": "it"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "name"
+        ]
+      },
+      "CategoryResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string",
+            "nullable": true
+          },
+          "icon": {
+            "type": "string",
+            "nullable": true
+          },
+          "translations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryTranslationResponseDto"
+            }
+          },
+          "_count": {
+            "type": "object",
+            "description": "Present on list/detail only",
+            "example": {
+              "events": 3
+            }
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "translations"
+        ]
+      },
+      "RecurrenceRuleResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string",
+            "example": "FREQ=WEEKLY;BYDAY=MO"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "count": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "rule"
+        ]
+      },
+      "EventResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "defaultLocale": {
+            "type": "string",
+            "example": "it"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "authorEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Europe/Rome"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED",
+              "COMPLETED"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "categoryId": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "isOnline": {
+            "type": "boolean"
+          },
+          "maxParticipants": {
+            "type": "number",
+            "nullable": true
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "price": {
+            "type": "string",
+            "nullable": true,
+            "example": "12.50",
+            "description": "Decimal, serialized as a string"
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "example": "EUR"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recurrenceRuleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "parentEventId": {
+            "type": "string",
+            "nullable": true
+          },
+          "translations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventTranslationResponseDto"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventTagResponseDto"
+            }
+          },
+          "category": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CategoryResponseDto"
+              }
+            ]
+          },
+          "recurrenceRule": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RecurrenceRuleResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "defaultLocale",
+          "authorId",
+          "authorName",
+          "startTime",
+          "timezone",
+          "status",
+          "isOnline",
+          "isPublic",
+          "createdAt",
+          "updatedAt",
+          "translations",
+          "tags"
+        ]
+      },
+      "EventTranslationDto": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "type": "string",
+            "example": "it"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "title"
+        ]
+      },
+      "CreateEventDto": {
+        "type": "object",
+        "properties": {
+          "translations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventTranslationDto"
+            }
+          },
+          "defaultLocale": {
+            "type": "string",
+            "default": "it"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "authorEmail": {
+            "type": "string"
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "coverImageUrl": {
+            "type": "string"
+          },
+          "tagSlugs": {
+            "description": "Tag slugs — created if not exist",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "locationAddress": {
+            "type": "string"
+          },
+          "locationUrl": {
+            "type": "string"
+          },
+          "isOnline": {
+            "type": "boolean"
+          },
+          "maxParticipants": {
+            "type": "number"
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "price": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "recurrenceRule": {
+            "type": "string",
+            "description": "iCal RRULE string e.g. FREQ=WEEKLY;BYDAY=MO"
+          },
+          "recurrenceEndDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recurrenceCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "translations",
+          "authorId",
+          "authorName",
+          "startTime"
+        ]
+      },
+      "PageMetaDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "totalPages": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ]
+      },
+      "ParticipantCountDto": {
+        "type": "object",
+        "properties": {
+          "participants": {
+            "type": "number",
+            "description": "Seats taken: REGISTERED + CONFIRMED + ATTENDED"
+          }
+        },
+        "required": [
+          "participants"
+        ]
+      },
+      "EventWithCountResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "defaultLocale": {
+            "type": "string",
+            "example": "it"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "authorEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Europe/Rome"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED",
+              "COMPLETED"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "categoryId": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "isOnline": {
+            "type": "boolean"
+          },
+          "maxParticipants": {
+            "type": "number",
+            "nullable": true
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "price": {
+            "type": "string",
+            "nullable": true,
+            "example": "12.50",
+            "description": "Decimal, serialized as a string"
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "example": "EUR"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recurrenceRuleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "parentEventId": {
+            "type": "string",
+            "nullable": true
+          },
+          "translations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventTranslationResponseDto"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventTagResponseDto"
+            }
+          },
+          "category": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CategoryResponseDto"
+              }
+            ]
+          },
+          "recurrenceRule": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RecurrenceRuleResponseDto"
+              }
+            ]
+          },
+          "_count": {
+            "$ref": "#/components/schemas/ParticipantCountDto"
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "defaultLocale",
+          "authorId",
+          "authorName",
+          "startTime",
+          "timezone",
+          "status",
+          "isOnline",
+          "isPublic",
+          "createdAt",
+          "updatedAt",
+          "translations",
+          "tags",
+          "_count"
+        ]
+      },
+      "ChildEventResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED",
+              "COMPLETED"
+            ]
+          },
+          "_count": {
+            "$ref": "#/components/schemas/ParticipantCountDto"
+          }
+        },
+        "required": [
+          "id",
+          "startTime",
+          "status",
+          "_count"
+        ]
+      },
+      "EventDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "defaultLocale": {
+            "type": "string",
+            "example": "it"
+          },
+          "authorId": {
+            "type": "string"
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "authorEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "timezone": {
+            "type": "string",
+            "example": "Europe/Rome"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED",
+              "COMPLETED"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "categoryId": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "locationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "isOnline": {
+            "type": "boolean"
+          },
+          "maxParticipants": {
+            "type": "number",
+            "nullable": true
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "price": {
+            "type": "string",
+            "nullable": true,
+            "example": "12.50",
+            "description": "Decimal, serialized as a string"
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "example": "EUR"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recurrenceRuleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "parentEventId": {
+            "type": "string",
+            "nullable": true
+          },
+          "translations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventTranslationResponseDto"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventTagResponseDto"
+            }
+          },
+          "category": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CategoryResponseDto"
+              }
+            ]
+          },
+          "recurrenceRule": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RecurrenceRuleResponseDto"
+              }
+            ]
+          },
+          "_count": {
+            "$ref": "#/components/schemas/ParticipantCountDto"
+          },
+          "childEvents": {
+            "description": "First 100 recurring children by startTime",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChildEventResponseDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "defaultLocale",
+          "authorId",
+          "authorName",
+          "startTime",
+          "timezone",
+          "status",
+          "isOnline",
+          "isPublic",
+          "createdAt",
+          "updatedAt",
+          "translations",
+          "tags",
+          "_count",
+          "childEvents"
+        ]
+      },
+      "EventStatsDto": {
+        "type": "object",
+        "properties": {
+          "totalParticipants": {
+            "type": "number"
+          },
+          "registered": {
+            "type": "number"
+          },
+          "confirmed": {
+            "type": "number"
+          },
+          "waitlist": {
+            "type": "number"
+          },
+          "cancelled": {
+            "type": "number"
+          },
+          "attended": {
+            "type": "number"
+          },
+          "checkedIn": {
+            "type": "number"
+          },
+          "availableSpots": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "totalParticipants",
+          "registered",
+          "confirmed",
+          "waitlist",
+          "cancelled",
+          "attended",
+          "checkedIn"
+        ]
+      },
+      "EventStatsResponseDto": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/EventResponseDto"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/EventStatsDto"
+          }
+        },
+        "required": [
+          "event",
+          "stats"
+        ]
+      },
+      "ParticipantResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "INLINE",
+              "EXTERNAL"
+            ]
+          },
+          "userName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalId": {
+            "type": "string",
+            "nullable": true
+          },
+          "externalSource": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "REGISTERED",
+              "WAITLIST",
+              "CONFIRMED",
+              "CANCELLED",
+              "ATTENDED"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ATTENDEE",
+              "SPEAKER",
+              "ORGANIZER",
+              "HOST"
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "checkedIn": {
+            "type": "boolean"
+          },
+          "checkedInAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "metadata": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "eventId",
+          "type",
+          "userName",
+          "status",
+          "role",
+          "checkedIn",
+          "createdAt"
+        ]
+      },
+      "UpdateEventDto": {
+        "type": "object",
+        "properties": {
+          "translations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventTranslationDto"
+            }
+          },
+          "tagSlugs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "coverImageUrl": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "locationAddress": {
+            "type": "string"
+          },
+          "locationUrl": {
+            "type": "string"
+          },
+          "isOnline": {
+            "type": "boolean"
+          },
+          "maxParticipants": {
+            "type": "number",
+            "nullable": true,
+            "description": "null removes the cap (promotes the whole waitlist)"
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "price": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          }
+        }
+      },
+      "AddParticipantDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "INLINE",
+              "EXTERNAL"
+            ],
+            "default": "INLINE"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string",
+            "description": "External user ID from third-party app"
+          },
+          "externalSource": {
+            "type": "string",
+            "description": "Source identifier e.g. \"discord\", \"steam\""
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ATTENDEE",
+              "SPEAKER",
+              "ORGANIZER",
+              "HOST"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Domain-specific data e.g. {team: \"RedTeam\", rank: 3}"
+          }
+        },
+        "required": [
+          "userName"
+        ]
+      },
+      "BulkAddErrorDto": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "reason"
+        ]
+      },
+      "BulkAddResultDto": {
+        "type": "object",
+        "properties": {
+          "added": {
+            "type": "number"
+          },
+          "waitlisted": {
+            "type": "number"
+          },
+          "skipped": {
+            "type": "number"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkAddErrorDto"
+            }
+          }
+        },
+        "required": [
+          "added",
+          "waitlisted",
+          "skipped",
+          "errors"
+        ]
+      },
+      "BulkAddParticipantsDto": {
+        "type": "object",
+        "properties": {
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AddParticipantDto"
+            }
+          },
+          "skipDuplicates": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "participants"
+        ]
+      },
+      "UpdateParticipantStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "REGISTERED",
+              "WAITLIST",
+              "CONFIRMED",
+              "CANCELLED",
+              "ATTENDED"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "CategoryTranslationDto": {
+        "type": "object",
+        "properties": {
+          "locale": {
+            "type": "string",
+            "example": "it"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "name"
+        ]
+      },
+      "CreateCategoryDto": {
+        "type": "object",
+        "properties": {
+          "translations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryTranslationDto"
+            }
+          },
+          "color": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "translations"
+        ]
+      },
+      "UpdateCategoryDto": {
+        "type": "object",
+        "properties": {
+          "translations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryTranslationDto"
+            }
+          },
+          "color": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateTagDto": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Lowercase slug e.g. \"5v5\", \"yoga\""
+          },
+          "label": {
+            "type": "object",
+            "description": "Localized display labels",
+            "example": {
+              "it": "Competitivo",
+              "en": "Competitive"
+            }
+          }
+        },
+        "required": [
+          "slug"
+        ]
+      },
+      "UpdateTagDto": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "object"
+          }
+        }
+      },
+      "WebhookDeliveryResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string",
+            "example": "event.created"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "webhookUrl": {
+            "type": "string",
+            "description": "URL at enqueue time, audit only"
+          },
+          "attempts": {
+            "type": "number"
+          },
+          "maxAttempts": {
+            "type": "number"
+          },
+          "nextRetryAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "DELIVERED",
+              "FAILED"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "clientId",
+          "eventType",
+          "payload",
+          "webhookUrl",
+          "attempts",
+          "maxAttempts",
+          "nextRetryAt",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ClientResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "defaultLocale": {
+            "type": "string",
+            "example": "it"
+          },
+          "emailActive": {
+            "type": "boolean"
+          },
+          "webhookUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "isActive",
+          "defaultLocale",
+          "emailActive",
+          "createdAt"
+        ]
+      },
+      "UpdateSettingsDto": {
+        "type": "object",
+        "properties": {
+          "webhookUrl": {
+            "type": "string"
+          },
+          "defaultLocale": {
+            "type": "string",
+            "example": "en"
+          },
+          "emailActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WebhookSecretResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "webhookSecret": {
+            "type": "string",
+            "description": "HMAC secret for the webhook-signature header"
+          }
+        },
+        "required": [
+          "id",
+          "webhookSecret"
+        ]
+      },
+      "ClientCreatedResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string",
+            "nullable": true
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "defaultLocale": {
+            "type": "string",
+            "example": "it"
+          },
+          "emailActive": {
+            "type": "boolean"
+          },
+          "webhookUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "token": {
+            "type": "string",
+            "description": "Shown once, on creation"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "isActive",
+          "defaultLocale",
+          "emailActive",
+          "createdAt",
+          "token"
+        ]
+      },
+      "CreateClientDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Bastion tenant id to bind this client to (enables Bastion service-client + admin auth)"
+          },
+          "defaultLocale": {
+            "type": "string",
+            "default": "it",
+            "example": "it"
+          },
+          "emailActive": {
+            "type": "boolean",
+            "default": false
+          },
+          "webhookUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "UpdateClientDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string",
+            "description": "Bastion tenant id to bind this client to"
+          },
+          "defaultLocale": {
+            "type": "string",
+            "example": "en"
+          },
+          "emailActive": {
+            "type": "boolean"
+          },
+          "webhookUrl": {
+            "type": "string"
+          }
+        }
+      },
+      "ClientTokenResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "token"
+        ]
+      },
+      "StatsEventsDto": {
+        "type": "object",
+        "properties": {
+          "draft": {
+            "type": "number"
+          },
+          "published": {
+            "type": "number"
+          },
+          "cancelled": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "upcoming": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "draft",
+          "published",
+          "cancelled",
+          "completed",
+          "upcoming"
+        ]
+      },
+      "StatsParticipantsDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "active": {
+            "type": "number"
+          },
+          "checkedIn": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "total",
+          "active",
+          "checkedIn"
+        ]
+      },
+      "StatsRatesDto": {
+        "type": "object",
+        "properties": {
+          "avgFillRate": {
+            "type": "number"
+          },
+          "checkInRate": {
+            "type": "number"
+          },
+          "noShowRate": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "avgFillRate",
+          "checkInRate",
+          "noShowRate"
+        ]
+      },
+      "StatsAlertsDto": {
+        "type": "object",
+        "properties": {
+          "soldOutWithWaitlist": {
+            "type": "number"
+          },
+          "staleDrafts": {
+            "type": "number"
+          },
+          "pastNotCompleted": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "soldOutWithWaitlist",
+          "staleDrafts",
+          "pastNotCompleted"
+        ]
+      },
+      "DailyPointDto": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Day, YYYY-MM-DD"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "bucket",
+          "value"
+        ]
+      },
+      "StatsTrendsDto": {
+        "type": "object",
+        "properties": {
+          "upcoming": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyPointDto"
+            }
+          }
+        },
+        "required": [
+          "upcoming"
+        ]
+      },
+      "TenantStatsResponseDto": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "$ref": "#/components/schemas/StatsEventsDto"
+          },
+          "participants": {
+            "$ref": "#/components/schemas/StatsParticipantsDto"
+          },
+          "rates": {
+            "$ref": "#/components/schemas/StatsRatesDto"
+          },
+          "alerts": {
+            "$ref": "#/components/schemas/StatsAlertsDto"
+          },
+          "trends": {
+            "$ref": "#/components/schemas/StatsTrendsDto"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "events",
+          "participants",
+          "rates",
+          "alerts",
+          "trends",
+          "version"
+        ]
+      },
+      "TimeseriesPointDto": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "bucket",
+          "value"
+        ]
+      },
+      "TimeseriesResponseDto": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "enum": [
+              "events",
+              "participants"
+            ]
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeseriesPointDto"
+            }
+          }
+        },
+        "required": [
+          "metric",
+          "interval",
+          "data"
+        ]
+      },
+      "BreakdownRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true,
+            "description": "status: label; category/tag: id"
+          },
+          "label": {
+            "type": "string",
+            "description": "status only"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true,
+            "description": "category only"
+          },
+          "slug": {
+            "type": "string",
+            "description": "tag only"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count"
+        ]
+      },
+      "BreakdownResponseDto": {
+        "type": "object",
+        "properties": {
+          "by": {
+            "type": "string",
+            "enum": [
+              "status",
+              "category",
+              "tag"
+            ]
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BreakdownRowDto"
+            }
+          }
+        },
+        "required": [
+          "by",
+          "data"
+        ]
+      },
+      "RetentionCohortDto": {
+        "type": "object",
+        "properties": {
+          "cohort": {
+            "type": "string",
+            "example": "2026-03",
+            "description": "YYYY-MM"
+          },
+          "size": {
+            "type": "number"
+          },
+          "retention": {
+            "description": "Share of the cohort active in each following period, 0..1",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "cohort",
+          "size",
+          "retention"
+        ]
+      },
+      "RetentionResponseDto": {
+        "type": "object",
+        "properties": {
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "week",
+              "month"
+            ]
+          },
+          "cohorts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RetentionCohortDto"
+            }
+          }
+        },
+        "required": [
+          "granularity",
+          "cohorts"
+        ]
+      },
+      "PersonExternalDto": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "nullable": true
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "PersonSummaryDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "p_0123456789abcdef0123456789abcdef"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "external": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonExternalDto"
+              }
+            ]
+          },
+          "eventsCount": {
+            "type": "number"
+          },
+          "firstSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checkedInCount": {
+            "type": "number"
+          },
+          "noShowCount": {
+            "type": "number"
+          },
+          "segment": {
+            "type": "string",
+            "enum": [
+              "vip",
+              "at_risk",
+              "returning",
+              "new"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "displayName",
+          "eventsCount",
+          "firstSeen",
+          "lastSeen",
+          "checkedInCount",
+          "noShowCount",
+          "segment"
+        ]
+      },
+      "PersonHistoryDto": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "checkedIn": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eventId",
+          "startTime",
+          "status",
+          "checkedIn"
+        ]
+      },
+      "PersonTopCategoryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "frequency": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "frequency"
+        ]
+      },
+      "PersonTopTagDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "frequency": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "frequency"
+        ]
+      },
+      "PersonProfileResponseDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "p_0123456789abcdef0123456789abcdef"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "external": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonExternalDto"
+              }
+            ]
+          },
+          "eventsCount": {
+            "type": "number"
+          },
+          "firstSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeen": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "checkedInCount": {
+            "type": "number"
+          },
+          "noShowCount": {
+            "type": "number"
+          },
+          "segment": {
+            "type": "string",
+            "enum": [
+              "vip",
+              "at_risk",
+              "returning",
+              "new"
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonHistoryDto"
+            }
+          },
+          "topCategories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonTopCategoryDto"
+            }
+          },
+          "topTags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonTopTagDto"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "displayName",
+          "eventsCount",
+          "firstSeen",
+          "lastSeen",
+          "checkedInCount",
+          "noShowCount",
+          "segment",
+          "history",
+          "topCategories",
+          "topTags"
+        ]
+      }
+    }
+  }
+}

@@ -22,3 +22,28 @@ export class UpdateTagDto {
   @IsObject()
   label?: Record<string, string>;
 }
+
+export class TagResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  clientId: string;
+
+  @ApiProperty()
+  slug: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    example: { it: 'Competitivo', en: 'Competitive' },
+  })
+  label: Record<string, string> | null;
+
+  @ApiPropertyOptional({
+    description: 'Present on admin list with withUsage=true',
+    example: { events: 3 },
+  })
+  _count?: { events: number };
+}

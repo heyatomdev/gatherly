@@ -1,10 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PageParams } from '@heyatom/nest-common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EventService } from '../events/event.service';
+import { GetEventsQueryDto } from '../events/dto/event.dto';
 import { CreateTagDto, UpdateTagDto } from './dto/tag.dto';
 
 @Injectable()
 export class TagService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private events: EventService,
+  ) {}
 
   async createTag(clientId: string, data: CreateTagDto) {
     const slug = data.slug.toLowerCase().trim();
@@ -46,15 +52,15 @@ export class TagService {
     await this.prisma.tag.delete({ where: { id: tagId } });
   }
 
-  async getTagEvents(tagId: string, clientId: string) {
+  /** Same list as GET /events?tagId=, so the same DTO and ordering. */
+  async getTagEvents(tagId: string, clientId: string, page: PageParams) {
     await this.getTagById(tagId, clientId);
-    return this.prisma.eventTag.findMany({
-      where: { tagId },
-      include: {
-        event: {
-          include: { translations: true },
-        },
-      },
+    // Assign onto a DTO instance: a spread would lose PageParams' skip getter.
+    const query = Object.assign(new GetEventsQueryDto(), {
+      page: page.page,
+      limit: page.limit,
+      tagId,
     });
+    return this.events.getEventsByClient(clientId, query);
   }
 }

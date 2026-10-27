@@ -4,7 +4,10 @@ import {
   IsBoolean,
   IsUrl,
   MaxLength,
+  IsEnum,
 } from 'class-validator';
+import { WebhookDeliveryStatus } from '@prisma/client';
+import { PageParams } from '@heyatom/nest-common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateClientDto {
@@ -69,4 +72,11 @@ export class UpdateClientDto {
   @IsUrl({ protocols: ['https'], require_protocol: true })
   @MaxLength(2048)
   webhookUrl?: string;
+}
+
+export class WebhookDeliveriesQueryDto extends PageParams {
+  @ApiPropertyOptional({ enum: WebhookDeliveryStatus })
+  @IsOptional()
+  @IsEnum(WebhookDeliveryStatus)
+  status?: WebhookDeliveryStatus;
 }

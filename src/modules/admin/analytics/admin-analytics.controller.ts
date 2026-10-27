@@ -1,5 +1,6 @@
 import { Controller, Get, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiOkData } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { AdminAnalyticsService } from './admin-analytics.service';
@@ -12,6 +13,12 @@ import {
   TimeseriesMetric,
   TimeseriesQueryDto,
 } from './dto/analytics-query.dto';
+import {
+  BreakdownResponseDto,
+  RetentionResponseDto,
+  TenantStatsResponseDto,
+  TimeseriesResponseDto,
+} from './dto/analytics-response.dto';
 
 @ApiTags('admin/analytics')
 @ApiBearerAuth()
@@ -21,6 +28,7 @@ export class AdminAnalyticsController {
   constructor(private readonly analytics: AdminAnalyticsService) {}
 
   @Get('stats')
+  @ApiOkData(TenantStatsResponseDto)
   stats(@Request() req, @Query() query: StatsQueryDto) {
     return this.analytics.tenantStats(
       req.adminClient.id,
@@ -30,6 +38,7 @@ export class AdminAnalyticsController {
   }
 
   @Get('stats/timeseries')
+  @ApiOkData(TimeseriesResponseDto)
   @ApiQuery({ name: 'metric', enum: TimeseriesMetric, required: false })
   @ApiQuery({ name: 'interval', enum: TimeseriesInterval, required: false })
   timeseries(@Request() req, @Query() query: TimeseriesQueryDto) {
@@ -43,6 +52,7 @@ export class AdminAnalyticsController {
   }
 
   @Get('stats/breakdown')
+  @ApiOkData(BreakdownResponseDto)
   @ApiQuery({ name: 'by', enum: BreakdownBy, required: false })
   breakdown(@Request() req, @Query() query: BreakdownQueryDto) {
     return this.analytics.breakdown(
@@ -52,6 +62,7 @@ export class AdminAnalyticsController {
   }
 
   @Get('analytics/retention')
+  @ApiOkData(RetentionResponseDto)
   retention(@Request() req, @Query() query: RetentionQueryDto) {
     return this.analytics.retention(
       req.adminClient.id,

@@ -1145,6 +1145,24 @@ describe('EventService', () => {
       },
     );
 
+    it.each(['CANCELLED', 'COMPLETED'])(
+      'refuses check-in on a %s event with EVENT_CLOSED',
+      async (status) => {
+        lockReturns(5, { status });
+        mockTx.participant.findFirst.mockResolvedValue(
+          baseParticipant({ status: 'REGISTERED' }),
+        );
+
+        await expect(
+          service.checkInParticipant(PARTICIPANT_ID, EVENT_ID, CLIENT_ID),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'EVENT_CLOSED' }),
+        });
+        expect(mockTx.participant.update).not.toHaveBeenCalled();
+        expect(mockWebhook.notify).not.toHaveBeenCalled();
+      },
+    );
+
     it('throws NotFoundException when the event belongs to another client', async () => {
       mockTx.$queryRaw.mockResolvedValue([]);
 

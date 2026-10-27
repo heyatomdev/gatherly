@@ -879,7 +879,9 @@ export class EventService {
   /**
    * REGISTERED/CONFIRMED → ATTENDED. Already ATTENDED returns the row as-is (no
    * webhook); WAITLIST/CANCELLED are refused — they hold no seat, and checking
-   * them in would put someone in the room past maxParticipants.
+   * them in would put someone in the room past maxParticipants. A CANCELLED or
+   * COMPLETED event is closed: its participant list is a record, so check-in is
+   * refused with EVENT_CLOSED (consoles only hid the button before).
    */
   async checkInParticipant(
     participantId: string,
@@ -888,7 +890,13 @@ export class EventService {
   ) {
     const { participant, changed } = await this.prisma.$transaction(
       async (tx) => {
-        await this.lockEvent(tx, eventId, clientId);
+        const event = await this.lockEvent(tx, eventId, clientId);
+        if (event.status === 'CANCELLED' || event.status === 'COMPLETED') {
+          throw new ConflictException({
+            code: 'EVENT_CLOSED',
+            message: `Event is ${event.status}, check-in is closed`,
+          });
+        }
 
         const existing = await tx.participant.findFirst({
           where: { id: participantId, eventId },

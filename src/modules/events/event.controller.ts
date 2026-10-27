@@ -14,7 +14,11 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
-import { ApiPaginatedResponse } from '@heyatom/nest-common';
+import {
+  ApiCreatedData,
+  ApiOkData,
+  ApiPaginatedResponse,
+} from '@heyatom/nest-common';
 import { EventService } from './event.service';
 import { IdempotencyInterceptor } from '@/common/idempotency.interceptor';
 import {
@@ -26,6 +30,14 @@ import {
   GetParticipantsQueryDto,
   BulkAddParticipantsDto,
 } from './dto/event.dto';
+import {
+  BulkAddResultDto,
+  EventDetailResponseDto,
+  EventResponseDto,
+  EventStatsResponseDto,
+  EventWithCountResponseDto,
+  ParticipantResponseDto,
+} from './dto/event-response.dto';
 
 @ApiTags('events')
 @Controller('events')
@@ -34,6 +46,7 @@ export class EventController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiCreatedData(EventResponseDto)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Create event with translations and optional tags' })
   @ApiHeader({
@@ -46,7 +59,7 @@ export class EventController {
   }
 
   @Get()
-  @ApiPaginatedResponse()
+  @ApiPaginatedResponse(EventWithCountResponseDto)
   @ApiOperation({
     summary: 'List events for client with optional filters and pagination',
   })
@@ -55,17 +68,19 @@ export class EventController {
   }
 
   @Get(':eventId')
+  @ApiOkData(EventDetailResponseDto)
   async getEvent(@Request() req, @Param('eventId') eventId: string) {
     return this.eventService.getEventById(eventId, req.client.id);
   }
 
   @Get(':eventId/stats')
+  @ApiOkData(EventStatsResponseDto)
   async getEventStats(@Request() req, @Param('eventId') eventId: string) {
     return this.eventService.getEventStats(eventId, req.client.id);
   }
 
   @Get(':eventId/participants')
-  @ApiPaginatedResponse()
+  @ApiPaginatedResponse(ParticipantResponseDto)
   @ApiOperation({ summary: 'List participants with filters and pagination' })
   async getParticipants(
     @Request() req,
@@ -76,6 +91,7 @@ export class EventController {
   }
 
   @Patch(':eventId')
+  @ApiOkData(EventResponseDto)
   @ApiOperation({
     summary:
       'Update event — pass translations to upsert, tagSlugs to replace all tags',
@@ -89,6 +105,7 @@ export class EventController {
   }
 
   @Put(':eventId/publish')
+  @ApiOkData(EventResponseDto)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -99,12 +116,14 @@ export class EventController {
   }
 
   @Put(':eventId/complete')
+  @ApiOkData(EventResponseDto)
   @HttpCode(HttpStatus.OK)
   async completeEvent(@Request() req, @Param('eventId') eventId: string) {
     return this.eventService.completeEvent(eventId, req.client.id);
   }
 
   @Put(':eventId/cancel')
+  @ApiOkData(EventResponseDto)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -116,6 +135,7 @@ export class EventController {
 
   @Post(':eventId/participants')
   @HttpCode(HttpStatus.CREATED)
+  @ApiCreatedData(ParticipantResponseDto)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({
     summary:
@@ -136,6 +156,7 @@ export class EventController {
 
   @Post(':eventId/participants/bulk')
   @HttpCode(HttpStatus.OK)
+  @ApiOkData(BulkAddResultDto)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({
     summary:
@@ -155,6 +176,7 @@ export class EventController {
   }
 
   @Patch(':eventId/participants/:participantId/status')
+  @ApiOkData(ParticipantResponseDto)
   async updateParticipantStatus(
     @Request() req,
     @Param('eventId') eventId: string,
@@ -170,6 +192,7 @@ export class EventController {
   }
 
   @Put(':eventId/participants/:participantId/checkin')
+  @ApiOkData(ParticipantResponseDto)
   async checkInParticipant(
     @Request() req,
     @Param('eventId') eventId: string,
