@@ -11,13 +11,12 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiTags,
-} from '@nestjs/swagger';
-import { ApiOkData, ApiCreatedData } from '@heyatom/nest-common';
+  ApiOkData,
+  ApiCreatedData,
+  ApiPaginatedResponse,
+} from '@heyatom/nest-common';
 import { BastionSuperAdminGuard } from '@/modules/bastion/guards/bastion-super-admin.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { BastionAuditService } from '@heyatom/bastion-client/nest';
@@ -25,6 +24,7 @@ import { ClientService } from '@/modules/clients/client.service';
 import {
   CreateClientDto,
   UpdateClientDto,
+  WebhookDeliveriesQueryDto,
 } from '@/modules/clients/dto/client.dto';
 import {
   ClientCreatedResponseDto,
@@ -148,17 +148,12 @@ export class AdminClientsController {
   }
 
   @Get(':id/webhook-deliveries')
-  @ApiOkData([WebhookDeliveryResponseDto])
+  @ApiPaginatedResponse(WebhookDeliveryResponseDto)
   @ApiOperation({ summary: 'List webhook delivery attempts for debugging' })
-  @ApiQuery({
-    name: 'status',
-    required: false,
-    enum: ['PENDING', 'DELIVERED', 'FAILED'],
-  })
   getWebhookDeliveries(
     @Param('id') id: string,
-    @Query('status') status?: string,
+    @Query() query: WebhookDeliveriesQueryDto,
   ) {
-    return this.clients.getWebhookDeliveries(id, status);
+    return this.clients.getWebhookDeliveries(id, query);
   }
 }

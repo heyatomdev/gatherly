@@ -6,15 +6,21 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Request,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { ApiOkData, ApiCreatedData } from '@heyatom/nest-common';
+import {
+  ApiOkData,
+  ApiCreatedData,
+  ApiPaginatedResponse,
+  PageParams,
+} from '@heyatom/nest-common';
 import { TagService } from './tag.service';
 import { CreateTagDto, UpdateTagDto, TagResponseDto } from './dto/tag.dto';
-import { TagEventResponseDto } from '../events/dto/event-response.dto';
+import { EventWithCountResponseDto } from '../events/dto/event-response.dto';
 
 @ApiTags('tags')
 @Controller('tags')
@@ -43,10 +49,14 @@ export class TagController {
   }
 
   @Get(':tagId/events')
-  @ApiOkData([TagEventResponseDto])
+  @ApiPaginatedResponse(EventWithCountResponseDto)
   @ApiOperation({ summary: 'List events associated with tag' })
-  async getTagEvents(@Request() req, @Param('tagId') tagId: string) {
-    return this.tagService.getTagEvents(tagId, req.client.id);
+  async getTagEvents(
+    @Request() req,
+    @Param('tagId') tagId: string,
+    @Query() query: PageParams,
+  ) {
+    return this.tagService.getTagEvents(tagId, req.client.id, query);
   }
 
   @Patch(':tagId')

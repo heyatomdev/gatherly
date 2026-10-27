@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CategoryResponseDto } from '../../categories/dto/category.dto';
 import { TagResponseDto } from '../../tags/dto/tag.dto';
 
@@ -164,20 +164,4 @@ export class EventStatsDto {
 export class EventStatsResponseDto {
   @ApiProperty({ type: EventResponseDto }) event: EventResponseDto;
   @ApiProperty({ type: EventStatsDto }) stats: EventStatsDto;
-}
-
-/** Event row with translations only — what GET /tags/:id/events includes. */
-export class TaggedEventDto extends OmitType(EventResponseDto, [
-  'tags',
-  'category',
-  'recurrenceRule',
-] as const) {
-  @ApiProperty({ type: [EventTranslationResponseDto] })
-  translations: EventTranslationResponseDto[];
-}
-
-export class TagEventResponseDto {
-  @ApiProperty() eventId: string;
-  @ApiProperty() tagId: string;
-  @ApiProperty({ type: TaggedEventDto }) event: TaggedEventDto;
 }

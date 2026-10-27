@@ -369,7 +369,9 @@ Platform standard (`../docs/standards/api.md`), all from the package — don't r
   return it **as is** with `@ApiPaginatedResponse()`. The envelope recognises it by a marker: a
   copy (spread, class-transformer, `structuredClone`) or a hand-built `{ data, meta }` gets
   wrapped again in `{ data }`. Paginated: `/events`, `/events/:id/participants`, the
-  same under `/admin`, `/admin/people`. Other lists aren't — paginating them is a contract change.
+  same under `/admin`, `/admin/people`, `/tags/:tagId/events` (same `EventWithCountResponseDto`
+  as `/events`), the webhook deliveries (`/admin/webhooks/deliveries`,
+  `/admin/clients/:id/webhook-deliveries`). Other lists aren't — paginating them is a contract change.
 - **Swagger**: `ENABLE_SWAGGER` resolved in `validate()` by `swaggerEnabled()` from the raw
   `NODE_ENV` (unset → off); `setupSwagger()` with title `Gatherly`, version `APP_VERSION`
   (`src/common/app-version.ts`, `readAppVersion()`), UI `/docs`, JSON `/docs-json`.

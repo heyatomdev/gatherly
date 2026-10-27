@@ -10,13 +10,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ApiOkData } from '@heyatom/nest-common';
+import { ApiPaginatedResponse } from '@heyatom/nest-common';
 import { BastionUserGuard } from '@/modules/bastion/guards/bastion-user.guard';
 import { TenantAdminRoleGuard } from '@/modules/bastion/guards/tenant-admin-role.guard';
 import { AdminThrottlerGuard } from '@/guards/admin-throttler.guard';
 import { ClientService } from '@/modules/clients/client.service';
 import { WebhookService } from '@/modules/webhook/webhook.service';
 import { WebhookDeliveryResponseDto } from '@/modules/clients/dto/client-response.dto';
+import { WebhookDeliveriesQueryDto } from '@/modules/clients/dto/client.dto';
 
 @ApiTags('admin/webhooks')
 @ApiBearerAuth()
@@ -29,9 +30,9 @@ export class AdminWebhooksController {
   ) {}
 
   @Get('deliveries')
-  @ApiOkData([WebhookDeliveryResponseDto])
-  deliveries(@Request() req, @Query('status') status?: string) {
-    return this.clients.getWebhookDeliveries(req.adminClient.id, status);
+  @ApiPaginatedResponse(WebhookDeliveryResponseDto)
+  deliveries(@Request() req, @Query() query: WebhookDeliveriesQueryDto) {
+    return this.clients.getWebhookDeliveries(req.adminClient.id, query);
   }
 
   @Post('deliveries/:id/retry')
