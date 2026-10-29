@@ -5,13 +5,8 @@ ENV NODE_ENV=build
 # Create app directory
 WORKDIR /usr/src/app
 
-# Install pnpm and build dependencies
+# Install pnpm (no native modules to compile, so no build toolchain)
 RUN npm install -g pnpm@10.14.0
-
-# Install build deps needed for native modules and prisma generation
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential python3 curl ca-certificates gcc g++ make && \
-    rm -rf /var/lib/apt/lists/*
 
 # Install app dependencies (including dev dependencies) for the build
 COPY package.json pnpm-lock.yaml .npmrc pnpm-workspace.yaml ./
@@ -27,6 +22,16 @@ RUN pnpm build
 # Remove devDependencies to keep only production deps (pruned node_modules)
 RUN pnpm prune --prod
 
+# Drop what prune keeps but the runtime never loads:
+# - the prisma CLI (+ studio, react, typescript, pglite): kept as a resolved peer of
+#   @prisma/client; migrations aren't run from this image
+# - the query compilers of every database but postgres
+RUN cd node_modules/.pnpm \
+ && rm -rf prisma@* @prisma+studio-core@* @prisma+engines@* @prisma+dev@* @electric-sql+pglite* \
+           typescript@* effect@* react@* react-dom@* \
+ && find @prisma+client@*/node_modules/@prisma/client/runtime \
+      \( -name '*cockroachdb*' -o -name '*mysql*' -o -name '*sqlite*' -o -name '*sqlserver*' \) -delete
+
 # Start a fresh runtime image
 FROM node:24.15.0-slim AS prod
 
@@ -39,14 +44,12 @@ WORKDIR /usr/src/app
 # Create a non-root user and group with specific UID/GID to match host user
 RUN groupadd -g 1001 app && useradd -u 1001 -g app -m app
 
-# Install runtime dependencies for Sharp image processing
+# Pull Debian security fixes not yet in the base image and remove npm
+# (not needed at runtime; its bundled deps carry CVEs)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libvips-dev && \
     apt-get upgrade -y --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
-
-# Remove npm (not needed at runtime; its bundled deps carry CVEs)
-RUN npm uninstall -g npm corepack
+    rm -rf /var/lib/apt/lists/* && \
+    npm uninstall -g npm corepack
 
 # Copy built artifacts and dependencies from builder with ownership set during copy
 COPY --chown=app:app package.json pnpm-lock.yaml ./

@@ -37,3 +37,6 @@ scripts
 # Misc
 *.zip
 *.tar
+
+# Incremental tsc state from local builds: stale, it makes `nest build` skip emitting
+*.tsbuildinfo
