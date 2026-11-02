@@ -1,10 +1,9 @@
 ---
 type: plan
 service: gatherly
-status: open
+issue: heyatomdev/gatherly#3
 estimate: 2.5d
 updated: 2026-10-22
-verified: 472cfe3
 ---
 
 # 17 · Check-in da QR / codice partecipante (GX2)

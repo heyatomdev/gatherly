@@ -1,16 +1,16 @@
 # Gatherly — Piani
 
-Indice dei piani di sviluppo. Lo stato vive nel frontmatter di ogni piano; in caso di
-divergenza vince il frontmatter. Il lavoro non ancora pianificato è in
+Indice dei piani di sviluppo. Lo stato dei piani vive sulla board
+[HeyAtom](https://github.com/orgs/heyatomdev/projects/1). Il lavoro non ancora pianificato è in
 [BACKLOG.md](../BACKLOG.md).
 
 Prossimo numero libero: **18** (il 10 non è mai stato usato; i numeri non si riusano).
 
 ## Aperti
 
-| # | Piano | Stato |
+| # | Piano | Issue |
 |---|-------|-------|
-| 17 | [Check-in da QR/codice](17-qr-checkin.md) | open |
+| 17 | [Check-in da QR/codice](17-qr-checkin.md) | [#3](https://github.com/heyatomdev/gatherly/issues/3) |
 
 ## Chiusi — [done/](done/)
 
